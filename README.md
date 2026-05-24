@@ -107,6 +107,30 @@ To enable automatic testing and deployment:
         -   Mac: `/Library/Application Support/Unity/Unity_lic.ulf`
         -   Linux: `~/.local/share/unity3d/Unity/Unity_lic.ulf`
 
+    **Package signing secrets (Unity 6.3+ signed packages)**
+
+    Starting with Unity 6.3, Package Manager warns about unsigned packages. The release workflow signs your package via Unity's UPM CLI, and **signing is a hard gate** — if these secrets are missing or misconfigured, the release fails and no GitHub Release is created. Add three more repository secrets (`Settings > Secrets and variables > Actions`):
+
+    -   `UPM_ORG_ID` — your Unity **organization ID**.
+    -   `UPM_SERVICE_ACCOUNT_KEY_ID` — a Unity Cloud **service-account key ID**.
+    -   `UPM_SERVICE_ACCOUNT_KEY_SECRET` — the matching **service-account key secret** (shown only once).
+
+    How to obtain them (in the [Unity Cloud Dashboard](https://cloud.unity.com/)):
+
+    1.  Pick the **organization** that will own/sign your package (Unity Cloud → Organizations → note its **Organization ID** → that's `UPM_ORG_ID`).
+    2.  **Administration → Service Accounts → Create service account.** In its **Keys** section, **Create key** → record the **Key ID** (`UPM_SERVICE_ACCOUNT_KEY_ID`) and **Secret key** (`UPM_SERVICE_ACCOUNT_KEY_SECRET`) — the secret is shown only once.
+    3.  Give the service account the **"Package Manager Package Signer"** role for that organization.
+
+    **Critical — three things must line up, or signing fails with "User does not have permission to sign package … with the provided credentials and organization":**
+
+    -   The **service account must belong to the same organization** as `UPM_ORG_ID`.
+    -   That **organization must be authorized to sign your package's namespace** (the reverse-domain name in `package.json`, e.g. `com.company.package`).
+    -   A brand-new org won't be authorized for a namespace until it **claims** it. To claim it, do a **one-time interactive sign in the Unity Editor**: Package Manager → select your package → Export → in the **Authoring Org** dropdown pick that organization → sign. After that one interactive sign, the CI service account can sign the same package automatically.
+
+    > Tip: the Unity UPM CLI can only *sign* a namespace the org already owns — it cannot *claim* one. The interactive Editor sign above is the only way to establish the association.
+
+    See [`docs/openupm-signing.md`](docs/openupm-signing.md) for the full setup, verification, and troubleshooting guide.
+
 2.  **Enable Workflows**
     Rename the sample workflow files to enable them:
     -   `.github/workflows/release.yml-sample` ➡️ `.github/workflows/release.yml`
