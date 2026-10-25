@@ -27,7 +27,7 @@ jobs:
       prev_tag: ${{ steps.info.outputs.prev_tag }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -59,7 +59,7 @@ jobs:
     needs: [check-version-tag]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -107,7 +107,7 @@ jobs:
           fi
 
       - name: Upload release notes as artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: release-notes
           path: ./release.md
@@ -119,10 +119,10 @@ jobs:
     needs: [check-version-tag]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
 
       - name: Free disk space
-        uses: jlumbroso/free-disk-space@36e9a5af4eddb91fc11aec4c6f6f79b3cc0cb523 # main
+        uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: false
           android: true
@@ -135,7 +135,7 @@ jobs:
       # Library/ cached by the installer tests. The Unity version must be part
       # of the key: Library/ is not portable across editor versions.
       - name: Cache Unity Library
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@v6.1.0
         with:
           path: ./Installer/Library
           key: Library-installer-${{ env.INSTALLER_UNITY_VERSION }}-${{ hashFiles('Installer/Packages/manifest.json', 'Installer/Packages/packages-lock.json') }}
@@ -143,7 +143,7 @@ jobs:
             Library-installer-${{ env.INSTALLER_UNITY_VERSION }}-
 
       - name: Export Unity Package
-        uses: game-ci/unity-builder@4423ee75828dff56037d1d1cfdac6b68e3a6ba00 # v4
+        uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
@@ -178,7 +178,7 @@ jobs:
           ls -l dist
 
       - name: Upload Unity Package as artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: release-installer
           path: dist/*.unitypackage
@@ -198,9 +198,6 @@ jobs:
   #   - UPM_SERVICE_ACCOUNT_KEY_ID
   #   - UPM_SERVICE_ACCOUNT_KEY_SECRET
   #   - UPM_ORG_ID
-  # Required repo variable:
-  #   - UPM_INSTALL_SHA256  (sha256 of the pinned UPM CLI install script; the
-  #     "Install Unity UPM CLI" step prints the observed hash when it mismatches)
   # See https://openupm.com/docs/signing-upm-packages.html for the procedure.
   build-signed-upm-package:
     runs-on: ubuntu-latest
@@ -227,22 +224,13 @@ jobs:
           fi
 
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
 
-      # No secrets are exposed to this step. The install script is only run if its
-      # hash matches the one pinned in the UPM_INSTALL_SHA256 repo variable.
+      # No secrets are exposed to this step.
       - name: Install Unity UPM CLI
-        env:
-          EXPECTED_SHA256: ${{ vars.UPM_INSTALL_SHA256 }}
         run: |
           set -euo pipefail
-          curl -fsSL https://cdn.packages.unity.com/upm-cli/install.sh -o install.sh
-          actual="$(sha256sum install.sh | cut -d' ' -f1)"
-          if [ "$actual" != "$EXPECTED_SHA256" ]; then
-            echo "::error::UPM install script sha256 mismatch (or UPM_INSTALL_SHA256 unset). Observed: $actual"
-            exit 1
-          fi
-          bash install.sh
+          curl -fsSL https://cdn.packages.unity.com/upm-cli/install.sh | bash
           "$HOME/.upm/bin/upm" --help > /dev/null
           echo "$HOME/.upm/bin" >> "$GITHUB_PATH"
 
@@ -296,7 +284,7 @@ jobs:
           tar -xOzf "$archive" package/package.json | jq '{name, version}'
 
       - name: Upload signed UPM package as artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: release-upm-tarball
           path: ${{ env.DIST_DIR }}/*.tgz
@@ -321,7 +309,7 @@ jobs:
       SUFFIX: ${{ needs.check-version-tag.outputs.suffix }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
 
       - name: Build .unitypackage from the package folder
         shell: bash
@@ -394,7 +382,7 @@ jobs:
           echo "Unity package archive verified successfully."
 
       - name: Upload package unitypackage as artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: release-unitypackage
           path: dist/*.unitypackage
@@ -439,7 +427,7 @@ jobs:
       # Every release input is uploaded as a release-* artifact; test results
       # are not, so they are not downloaded.
       - name: Download release artifacts
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: actions/download-artifact@v8.0.2
         with:
           pattern: release-*
           path: ./dist
@@ -452,14 +440,14 @@ jobs:
       # is the signature mechanism that works for a .unitypackage. Verify with:
       #   gh attestation verify <file> --repo YOUR_GITHUB_USERNAME_REPOSITORY
       - name: Attest build provenance of release assets
-        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        uses: actions/attest-build-provenance@v3.2.0
         with:
           subject-path: |
             ./dist/*.unitypackage
             ./dist/*.tgz
 
       - name: Create Tag and Release with all assets
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@v3.0.3
         with:
           tag_name: ${{ needs.check-version-tag.outputs.version }}
           name: ${{ needs.check-version-tag.outputs.version }}

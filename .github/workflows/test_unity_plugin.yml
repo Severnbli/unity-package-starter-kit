@@ -28,13 +28,13 @@ jobs:
     name: ${{ inputs.label }} ${{ inputs.unityVersion }} ${{ inputs.testMode }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
 
       # The editor image needs more room than a stock runner has. Deleting the
       # preinstalled SDKs is a quick `rm -rf`; uninstalling apt packages
       # (large-packages) takes minutes and is not needed for the space.
       - name: Free disk space
-        uses: jlumbroso/free-disk-space@36e9a5af4eddb91fc11aec4c6f6f79b3cc0cb523 # main
+        uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: false
           android: true
@@ -47,14 +47,14 @@ jobs:
       # so one cache serves editmode, playmode and standalone. The key changes
       # whenever the package set changes; restore-keys falls back to the most
       # recent cache of the same project and version.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: actions/cache@v6.1.0
         with:
           path: ${{ inputs.projectPath }}/Library
           key: Library-${{ inputs.label }}-${{ inputs.unityVersion }}-${{ hashFiles(format('{0}/Packages/manifest.json', inputs.projectPath), format('{0}/Packages/packages-lock.json', inputs.projectPath)) }}
           restore-keys: |
             Library-${{ inputs.label }}-${{ inputs.unityVersion }}-
 
-      - uses: game-ci/unity-test-runner@32e57712352b500e17974b245a6dce9e11a73213 # v4
+      - uses: game-ci/unity-test-runner@v4
         id: tests
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -70,7 +70,7 @@ jobs:
           artifactsPath: artifacts
           customParameters: -CI true -GITHUB_ACTIONS true
 
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: test-results-${{ inputs.label }}-${{ inputs.unityVersion }}-${{ inputs.testMode }}

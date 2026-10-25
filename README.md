@@ -177,7 +177,6 @@ Add them under **Settings > Secrets and variables > Actions**.
 | `UPM_ORG_ID` | secret | Package signing |
 | `UPM_SERVICE_ACCOUNT_KEY_ID` | secret | Package signing |
 | `UPM_SERVICE_ACCOUNT_KEY_SECRET` | secret | Package signing |
-| `UPM_INSTALL_SHA256` | variable | SHA-256 of the pinned UPM CLI install script |
 
 Signing is a hard gate: without the `UPM_*` values no release is created. [`docs/openupm-signing.md`](docs/openupm-signing.md) explains how to get them.
 
@@ -187,7 +186,7 @@ Signing is a hard gate: without the `UPM_*` values no release is created. [`docs
 - **release** runs only on demand (**Actions > release > Run workflow**). It fails if the version tag already exists, runs the full test matrix, builds the signed tarball and both `.unitypackage` files, attests them and publishes the tag and GitHub Release in one step.
 - **test-unity-plugin** is the reusable job that runs one Unity test mode for one project.
 
-Dependabot keeps the pinned action versions up to date.
+Dependabot keeps the action versions up to date.
 
 To test another Unity version, use the [test project script](#test-projects).
 

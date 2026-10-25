@@ -5,7 +5,7 @@
 ## Once
 
 1. Make the GitHub repository public.
-2. Configure the CI secrets and the `UPM_INSTALL_SHA256` variable (see [`openupm-signing.md`](openupm-signing.md)).
+2. Configure the CI secrets (see [`openupm-signing.md`](openupm-signing.md)).
 3. [Submit the package to OpenUPM](https://openupm.com/packages/add/) using the repository URL.
 4. Switch the OpenUPM listing to `trackingMode: githubRelease` with `githubReleaseAssetName: 'tarball-YOUR_PACKAGE_ID-'` **before** the first release (see [`openupm-signing.md`](openupm-signing.md#4-file-the-openupm-listing-change)).
 
