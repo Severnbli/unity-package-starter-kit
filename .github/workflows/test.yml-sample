@@ -15,6 +15,7 @@ on:
       - "Unity-Tests/**"
       - "Installer/**"
       - "commands/check-package.sh"
+      - "commands/lib/common.sh"
       - ".github/workflows/test.yml"
       - ".github/workflows/test_unity_plugin.yml"
       - "!**.md"

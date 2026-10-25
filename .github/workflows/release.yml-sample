@@ -41,7 +41,7 @@ jobs:
           version="$(jq -r .version Unity-Package/Assets/root/package.json)"
           package_name="$(jq -r .name Unity-Package/Assets/root/package.json)"
           if [ -n "$(git ls-remote --tags origin "refs/tags/${version}")" ]; then
-            echo "::error::Tag ${version} already exists. Bump the version (commands/bump-version.ps1) before releasing."
+            echo "::error::Tag ${version} already exists. Bump the version (commands/bump-version.sh or .ps1) before releasing."
             exit 1
           fi
           prev_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"

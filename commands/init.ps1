@@ -1,4 +1,5 @@
 #!/usr/bin/env pwsh
+#Requires -Version 7.0
 <#
 .SYNOPSIS
     Initializes the Unity Package project by replacing placeholders.
@@ -40,13 +41,15 @@
     For example, "MyGitHubUsername/My-Repository-Name".
 
 .EXAMPLE
-    .\init.ps1 -PackageId "com.mycompany.coolpackage" -PackageName "Cool Package"
+    ./commands/init.ps1 -PackageId "com.mycompany.cool-package" -PackageName "Cool Package" -GitHubRepository "myusername/cool-package"
 
 .EXAMPLE
-    .\init.ps1 -PackageId "com.mycompany.coolpackage" -PackageName "Cool Package" -InstallerExtraPath "Editor"
+    ./commands/init.ps1 -PackageId "com.mycompany.cool-package" -PackageName "Cool Package" -GitHubRepository "myusername/cool-package" -InstallerExtraPath "Editor"
 
-.EXAMPLE
-    .\init.ps1 -PackageId "com.mycompany.coolpackage" -PackageName "Cool Package" -GitHubRepository "myusername/cool-package"
+.NOTES
+    Windows script; requires PowerShell 7+ (pwsh). On macOS and Linux use
+    the .sh script of the same name. Run it once, on a
+    fresh copy of the template.
 #>
 
 param(
@@ -67,6 +70,23 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "lib/Common.ps1")
+# Report failures as one line, like the .sh scripts, instead of a PowerShell stack trace.
+trap { Write-Host "error: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
+
+# Refuse to run twice: the second run would find no placeholders and only overwrite README.md.
+$PackageJson = Join-Path $RepoRoot "Unity-Package/Assets/root/package.json"
+if (-not (Get-Content -Path $PackageJson -Raw).Contains("YOUR_PACKAGE_ID")) {
+    throw "The template is already initialized: $PackageJson has no placeholders left."
+}
+
+# Package Manager accepts lowercase reverse-domain names only.
+if ($PackageId -cnotmatch '^[a-z0-9_-]+(\.[a-z0-9_-]+){2,}$') {
+    throw "Invalid package id '$PackageId'. Use a lowercase reverse-domain name such as 'com.company.cool-package'."
+}
+if ($GitHubRepository -notmatch '^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$') {
+    throw "Invalid GitHub repository '$GitHubRepository'. Use 'Username/Repository-Name'."
+}
 
 # Prompt for InstallerExtraPath if not provided
 if (-not $PSBoundParameters.ContainsKey('InstallerExtraPath')) {
@@ -140,10 +160,6 @@ $ReplacementsForRenaming = @{
 # Sort keys by length descending to avoid partial replacements
 $SortedKeys = $Replacements.Keys | Sort-Object { $_.Length } -Descending
 
-# Root directory (parent of commands)
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RepoRoot = Split-Path -Parent $ScriptDir
-
 Write-Host "Initializing package with:" -ForegroundColor Cyan
 Write-Host "  ID: $PackageId"
 Write-Host "  Name: $PackageName"
@@ -156,134 +172,77 @@ if (-not [string]::IsNullOrWhiteSpace($InstallerExtraPath)) {
 }
 Write-Host ""
 
-# Define target paths with optional ignore patterns
-# Each entry can be:
-#   - A simple string: "path/to/target"
-#   - A hashtable with Path and optional Ignore array: @{ Path = "folder"; Ignore = @("*/pattern", "specific/path") }
-# Ignore patterns are relative to the target path and support wildcards (*) for single directory level
+# Folders that get placeholders replaced, with the folders to skip inside them.
+# Unity's generated folders can be huge and must never be rewritten.
+$UnityGenerated = @("Library", "Temp", "Logs", "obj", "UserSettings", "Build", "Builds", ".vs", ".idea")
 $TargetPaths = @(
-    @{ Path = "commands/bump-version.ps1" },
-    @{ Path = "commands/check-package.sh" },
-    @{
-        Path   = "Installer"
-        Ignore = @(
-            "/Library",
-            "/Temp",
-            "/Logs",
-            "/obj"
-        )
-    },
-    @{
-        Path   = "Unity-Package"
-        Ignore = @(
-            "/Library",
-            "/Temp",
-            "/Logs",
-            "/obj"
-        )
-    },
-    @{
-        Path   = "Unity-Tests"
-        Ignore = @(
-            "*/Library",
-            "*/Temp",
-            "*/Logs",
-            "*/obj"
-        )
-    },
+    @{ Path = "Installer"; Skip = $UnityGenerated },
+    @{ Path = "Unity-Package"; Skip = $UnityGenerated },
+    @{ Path = "Unity-Tests"; Skip = $UnityGenerated; SkipDepth = 1 },
     @{ Path = "README.md" },
     @{ Path = "CHANGELOG.md" },
     @{ Path = "docs" },
     @{ Path = ".github" }
 )
 
-# Helper function to check if a path should be ignored
-function Test-ShouldIgnore {
-    param(
-        [string]$ItemPath,
-        [string]$BasePath,
-        [string[]]$IgnorePatterns
-    )
-
-    if (-not $IgnorePatterns -or $IgnorePatterns.Count -eq 0) {
-        return $false
+# All files and folders below a target, without the skipped folders.
+# -Force is required: on macOS and Linux every dot-prefixed item (.github, .gitignore) is hidden.
+function Get-TargetItems {
+    param([hashtable]$Target)
+    $Root = Join-Path $RepoRoot $Target.Path
+    if (-not (Test-Path $Root)) {
+        Write-Warning "Path not found: $Root"
+        return
+    }
+    $RootItem = Get-Item -Path $Root -Force
+    if (-not $RootItem.PSIsContainer) {
+        return $RootItem
     }
 
-    # Get relative path from base
-    $RelativePath = $ItemPath.Substring($BasePath.Length).TrimStart('\', '/')
-    $RelativePath = $RelativePath -replace '\\', '/'
-
-    foreach ($Pattern in $IgnorePatterns) {
-        # Convert glob pattern to regex
-        # * matches any single directory/file name (not path separator)
-        # ** would match multiple levels (not implemented here for simplicity)
-        $RegexPattern = "^" + ($Pattern -replace '\*', '[^/]+') + "(/.*)?$"
-
-        if ($RelativePath -match $RegexPattern) {
-            return $true
+    # Skip names apply directly inside the project folder (SkipDepth 0) or inside each
+    # project of a folder of projects (SkipDepth 1, Unity-Tests/<version>/Library).
+    $SkipDepth = if ($Target.SkipDepth) { $Target.SkipDepth } else { 0 }
+    $Pending = [System.Collections.Generic.Stack[object]]::new()
+    $Pending.Push(@($RootItem, 0))
+    while ($Pending.Count -gt 0) {
+        $Directory, $Depth = $Pending.Pop()
+        foreach ($Child in Get-ChildItem -LiteralPath $Directory.FullName -Force) {
+            if ($Child.PSIsContainer) {
+                if ($Child.Name -eq ".git") { continue }
+                if ($Target.Skip -and $Depth -eq $SkipDepth -and $Target.Skip -contains $Child.Name) { continue }
+                $Pending.Push(@($Child, ($Depth + 1)))
+            }
+            $Child
         }
     }
-
-    return $false
 }
 
-# Helper function to normalize target path entry
-function Get-TargetPathInfo {
-    param($Entry)
+function Get-AllTargetItems {
+    foreach ($Target in $TargetPaths) {
+        Get-TargetItems $Target
+    }
+}
 
-    if ($Entry -is [string]) {
-        return @{ Path = $Entry; Ignore = @() }
+# Ordinal, case-sensitive replacement: placeholders are literal text, not patterns.
+function Edit-Placeholders {
+    param([string]$Text, [hashtable]$Map)
+    foreach ($Key in $SortedKeys) {
+        $Text = $Text.Replace($Key, $Map[$Key])
     }
-    elseif ($Entry -is [hashtable]) {
-        return @{
-            Path   = $Entry.Path
-            Ignore = if ($Entry.Ignore) { $Entry.Ignore } else { @() }
-        }
-    }
-    else {
-        throw "Invalid target path entry: $Entry"
-    }
+    return $Text
 }
 
 # 1. Replace content in files
 Write-Host "Replacing content in files..." -ForegroundColor Yellow
-$Files = @()
-foreach ($Entry in $TargetPaths) {
-    $TargetInfo = Get-TargetPathInfo $Entry
-    $FullPath = Join-Path $RepoRoot $TargetInfo.Path
-    if (Test-Path $FullPath) {
-        if ((Get-Item $FullPath).PSIsContainer) {
-            $AllFiles = Get-ChildItem -Path $FullPath -Recurse -File
-            foreach ($File in $AllFiles) {
-                if (-not (Test-ShouldIgnore -ItemPath $File.FullName -BasePath $FullPath -IgnorePatterns $TargetInfo.Ignore)) {
-                    $Files += $File
-                }
-            }
-        }
-        else {
-            $Files += Get-Item $FullPath
-        }
+foreach ($File in Get-AllTargetItems | Where-Object { -not $_.PSIsContainer }) {
+    $Content = Read-TextFile $File.FullName
+    if ($null -eq $Content) {
+        continue
     }
-    else {
-        Write-Warning "Path not found: $FullPath"
-    }
-}
-
-foreach ($File in $Files) {
-    $Content = Get-Content -Path $File.FullName -Raw
-    $NewContent = $Content
-    $Modified = $false
-
-    foreach ($Key in $SortedKeys) {
-        if ($NewContent -match $Key) {
-            $NewContent = $NewContent -replace $Key, $Replacements[$Key]
-            $Modified = $true
-        }
-    }
-
-    if ($Modified) {
-        Set-Content -Path $File.FullName -Value $NewContent -NoNewline
-        Write-Host "  Updated: $($File.FullName)" -ForegroundColor Gray
+    $NewText = Edit-Placeholders $Content.Text $Replacements
+    if ($NewText -cne $Content.Text) {
+        Write-TextFile -Path $File.FullName -Text $NewText -HasBom $Content.HasBom
+        Write-Host "  Updated: $([System.IO.Path]::GetRelativePath($RepoRoot, $File.FullName))" -ForegroundColor Gray
     }
 }
 
@@ -303,46 +262,19 @@ if (-not [string]::IsNullOrWhiteSpace($InstallerExtraPath)) {
     # Move installer folder
     if (Test-Path $SourceFolder) {
         $DestFolder = Join-Path $ExtraPathDir "YOUR_PACKAGE_NAME_INSTALLER"
-        Move-Item -Path $SourceFolder -Destination $DestFolder -Force
+        Move-Item -LiteralPath $SourceFolder -Destination $DestFolder -Force
         Write-Host "  Moved installer to: $InstallerExtraPath/" -ForegroundColor Gray
     }
 }
 
 # 2. Rename files and directories
-# We need to do this depth-first (bottom-up) so we don't rename a parent directory before its children
+# Deepest paths first, so a folder is renamed only after everything inside it.
 Write-Host "Renaming files and directories..." -ForegroundColor Yellow
-$Items = @()
-foreach ($Entry in $TargetPaths) {
-    $TargetInfo = Get-TargetPathInfo $Entry
-    $FullPath = Join-Path $RepoRoot $TargetInfo.Path
-    if (Test-Path $FullPath) {
-        if ((Get-Item $FullPath).PSIsContainer) {
-            $AllItems = Get-ChildItem -Path $FullPath -Recurse
-            foreach ($Item in $AllItems) {
-                if (-not (Test-ShouldIgnore -ItemPath $Item.FullName -BasePath $FullPath -IgnorePatterns $TargetInfo.Ignore)) {
-                    $Items += $Item
-                }
-            }
-        }
-        else {
-            $Items += Get-Item $FullPath
-        }
-    }
-}
-
-# Sort depth-first (longest path first) to handle nested renames correctly
-$Items = $Items | Sort-Object -Property FullName -Descending | Select-Object -Unique
-
+$Items = Get-AllTargetItems | Sort-Object -Property { $_.FullName.Length } -Descending
 foreach ($Item in $Items) {
-    $NewName = $Item.Name
-    foreach ($Key in $SortedKeys) {
-        if ($NewName -match $Key) {
-            $NewName = $NewName -replace $Key, $ReplacementsForRenaming[$Key]
-        }
-    }
-
-    if ($NewName -ne $Item.Name) {
-        Rename-Item -Path $Item.FullName -NewName $NewName
+    $NewName = Edit-Placeholders $Item.Name $ReplacementsForRenaming
+    if ($NewName -cne $Item.Name) {
+        Rename-Item -LiteralPath $Item.FullName -NewName $NewName
         Write-Host "  Renamed: $($Item.Name) -> $NewName" -ForegroundColor Gray
     }
 }
@@ -350,14 +282,14 @@ foreach ($Item in $Items) {
 # 3. Enable the sample workflows
 Write-Host "Enabling workflows..." -ForegroundColor Yellow
 $WorkflowsDir = Join-Path $RepoRoot ".github/workflows"
-foreach ($Sample in Get-ChildItem -Path $WorkflowsDir -Filter "*.yml-sample" -File) {
+foreach ($Sample in Get-ChildItem -Path $WorkflowsDir -Filter "*.yml-sample" -File -Force) {
     $Enabled = $Sample.Name -replace '\.yml-sample$', '.yml'
     Move-Item -Path $Sample.FullName -Destination (Join-Path $WorkflowsDir $Enabled) -Force
     Write-Host "  Enabled: $Enabled" -ForegroundColor Gray
 }
 
 # 4. The template README is no longer needed: the package README replaces it.
-#    Both copies must stay identical (commands/check-package.sh checks it).
+#    Both copies must stay identical (commands/check-package.ps1 checks it).
 Write-Host "Replacing README.md with the package README..." -ForegroundColor Yellow
 Copy-Item -Path (Join-Path $RepoRoot "Unity-Package/Assets/root/README.md") -Destination (Join-Path $RepoRoot "README.md") -Force
 
@@ -365,8 +297,6 @@ Write-Host "Done!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  1. Fill in description, keywords and unity in Unity-Package/Assets/root/package.json."
-Write-Host "  2. Open the Installer and Unity-Package projects once to generate .meta files"
-Write-Host "     (commands/open-all-projects-unix.sh or commands/open-all-projects-windows.ps1)."
-Write-Host "  3. Run 'bash commands/check-package.sh' and commit."
+Write-Host "  2. Open every project once to generate .meta files: ./commands/open-all-projects.ps1"
+Write-Host "  3. Run ./commands/check-package.ps1 and commit."
 Write-Host "  4. Add the CI secrets (UNITY_*, UPM_*), see docs/openupm-signing.md."
-
