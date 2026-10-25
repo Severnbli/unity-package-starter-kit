@@ -114,8 +114,11 @@ if ((Test-UiEnabled) -and (-not $PackageId -or -not $PackageName -or -not $GitHu
     $RemoteSlug = ""
     try {
         $RemoteUrl = [string](& git -C $RepoRoot remote get-url origin 2>$null)
-        if ($RemoteUrl -match 'github\.com[:/]([^/]+/[^/]+?)(\.git)?$' -and $Matches[1] -match $GitHubRepositoryPattern) {
-            $RemoteSlug = $Matches[1]
+        if ($RemoteUrl -match 'github\.com[:/]([^/]+/[^/]+?)(\.git)?$') {
+            $Slug = $Matches[1]
+            if ($Slug -match $GitHubRepositoryPattern) {
+                $RemoteSlug = $Slug
+            }
         }
     }
     catch { }
