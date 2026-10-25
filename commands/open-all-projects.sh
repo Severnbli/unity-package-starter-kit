@@ -16,6 +16,9 @@
 #   ./commands/open-all-projects.sh --with-tests
 #   ./commands/open-all-projects.sh --editors-path /custom/path/to/editors
 #   ./commands/open-all-projects.sh --what-if Unity-Package    # print, do not open
+#
+# Run in a terminal without options, the script lists every project with its editor
+# version and lets you tick the ones to open.
 
 set -euo pipefail
 . "$(dirname "$0")/lib/common.sh"
@@ -29,6 +32,8 @@ EDITORS_PATH=""
 WHAT_IF=false
 WITH_TESTS=false
 PROJECTS=()
+ASK=false
+[ $# -eq 0 ] && ui_enabled && ASK=true
 while [ $# -gt 0 ]; do
   case "$1" in
     --editors-path) EDITORS_PATH="${2:-}"; shift 2 ;;
@@ -85,6 +90,34 @@ unity_executable() {
   done <<<"$ROOTS"
 }
 
+ROOTS="$(editor_roots)"
+[ -n "$ROOTS" ] || die "No Unity editors folder found. Install editors with Unity Hub or pass --editors-path."
+
+if [ "$ASK" = true ]; then
+  ui_header "Open Unity projects"
+  CANDIDATES=("Installer" "Unity-Package")
+  while IFS= read -r project; do
+    CANDIDATES+=("Unity-Tests/$project")
+  done < <(unity_test_projects)
+  LABELS=()
+  for project in "${CANDIDATES[@]}"; do
+    unity_version="$(project_unity_version "$REPO_ROOT/$project")"
+    if [ -z "$unity_version" ]; then
+      LABELS+=("$project  ${C_GRAY}(no editor version)${C_RESET}")
+    elif [ -n "$(unity_executable "$unity_version")" ]; then
+      LABELS+=("$project  ${C_GRAY}Unity $unity_version${C_RESET}")
+    else
+      LABELS+=("$project  ${C_YELLOW}Unity $unity_version is not installed${C_RESET}")
+    fi
+  done
+  ui_multiselect "Projects to open" "0 1" "${LABELS[@]}"
+  [ "${#UI_SELECTED[@]}" -gt 0 ] || { say "Nothing selected." "$C_YELLOW"; exit 0; }
+  for i in "${UI_SELECTED[@]}"; do
+    PROJECTS+=("${CANDIDATES[$i]}")
+  done
+  echo ""
+fi
+
 if [ "${#PROJECTS[@]}" -eq 0 ]; then
   PROJECTS=("Installer" "Unity-Package")
   if [ "$WITH_TESTS" = true ]; then
@@ -93,9 +126,6 @@ if [ "${#PROJECTS[@]}" -eq 0 ]; then
     done < <(unity_test_projects)
   fi
 fi
-
-ROOTS="$(editor_roots)"
-[ -n "$ROOTS" ] || die "No Unity editors folder found. Install editors with Unity Hub or pass --editors-path."
 
 say "Opening Unity projects..." "$C_CYAN"
 say "Editors folders: $(printf '%s' "$ROOTS" | tr '\n' ' ')" "$C_GRAY"

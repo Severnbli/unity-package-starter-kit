@@ -29,6 +29,8 @@
 .PARAMETER List
     Print the test projects and the versions the workflow tests.
 
+    Run in a console without parameters, the script asks what to do in a menu.
+
 .EXAMPLE
     ./commands/test-project.ps1 -Add 2023.2.22f1
 
@@ -120,7 +122,51 @@ function Get-ClosestProject {
     return $Candidates[0]
 }
 
-switch ($PSCmdlet.ParameterSetName) {
+$Action = $PSCmdlet.ParameterSetName
+if ($PSBoundParameters.Count -eq 0 -and (Test-UiEnabled)) {
+    Write-UiHeader "Test projects"
+    Show-Projects
+    Write-Host ""
+    $Choice = Read-UiSelect -Question "What do you want to do?" -Options @(
+        "Add a test project",
+        "Remove a test project",
+        "Sync the workflow matrix with Unity-Tests/",
+        "Nothing, just list them"
+    )
+    $Existing = @(Get-UnityTestProjects)
+    switch ($Choice) {
+        0 {
+            $Action = "Add"
+            while ($true) {
+                $Add = Read-UiInput -Question "Unity version of the new project" -Pattern $UnityVersionPattern -Hint "Use an editor version such as 2023.2.22f1."
+                if (-not (Test-Path (Join-Path $UnityTestsDir $Add))) {
+                    break
+                }
+                Write-Warning "Unity-Tests/$Add already exists."
+            }
+            if ($Existing.Count -gt 1) {
+                $Closest = Get-ClosestProject -Version $Add -Projects $Existing
+                $Labels = @($Existing | ForEach-Object { if ($_ -eq $Closest) { "$_  (closest)" } else { $_ } })
+                $From = $Existing[(Read-UiSelect -Question "Copy which project?" -Options $Labels -Default ([Array]::IndexOf($Existing, $Closest)))]
+            }
+        }
+        1 {
+            $Action = "Remove"
+            if ($Existing.Count -le 1) {
+                throw "Unity-Tests/$($Existing -join '') is the last test project. Add another one first: the workflow matrix cannot be empty."
+            }
+            $Remove = $Existing[(Read-UiSelect -Question "Remove which project?" -Options $Existing)]
+            if (-not (Read-UiConfirm "Delete Unity-Tests/$Remove and everything in it?" -DefaultNo)) {
+                Write-Host "Cancelled, nothing was changed." -ForegroundColor Yellow
+                exit 0
+            }
+        }
+        2 { $Action = "Sync" }
+        3 { exit 0 }
+    }
+}
+
+switch ($Action) {
     "Add" {
         if (-not (Test-UnityVersion $Add)) {
             throw "Invalid Unity version '$Add' (expected e.g. 2023.2.22f1)."

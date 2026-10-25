@@ -36,6 +36,9 @@
     For example, "Editor" places the installer at Assets/Editor/{Package} Installer.
     If not provided, you will be prompted (press Enter to skip).
 
+    Run in a console, the script asks for every parameter that was not passed, with
+    defaults taken from the git remote, so "commands\init.cmd" alone is enough.
+
 .PARAMETER GitHubRepository
     The GitHub username and repository name in the format "Username/Repository-Name".
     For example, "MyGitHubUsername/My-Repository-Name".
@@ -53,10 +56,10 @@
 #>
 
 param(
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $false)]
     [string]$PackageId,
 
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $false)]
     [string]$PackageName,
 
     [Parameter(Mandatory = $false)]
@@ -65,7 +68,7 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$InstallerExtraPath,
 
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $false)]
     [string]$GitHubRepository
 )
 
@@ -80,19 +83,95 @@ if (-not (Read-AllText $PackageJson).Contains("YOUR_PACKAGE_ID")) {
     throw "The template is already initialized: $PackageJson has no placeholders left."
 }
 
+$PackageIdPattern = '^[a-z0-9_-]+(\.[a-z0-9_-]+){2,}$'
+$GitHubRepositoryPattern = '^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$'
+$NamespacePattern = '^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$'
+
+# "Cool Package" -> "CoolPackage", "cool-package" -> "CoolPackage"
+function ConvertTo-PascalCase {
+    param([string]$Text)
+    $Words = $Text -split '[^A-Za-z0-9]+' | Where-Object { $_ }
+    return ($Words | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }) -join ''
+}
+
+# Skip the reverse-domain prefix ("com", "org", ...) and use the company segment:
+# "com.mycompany.cool-package" + "Cool Package" -> "Mycompany.CoolPackage".
+function Get-DefaultRootNamespace {
+    param([string]$Id, [string]$Name)
+    $IdSegments = $Id.ToLower() -split '\.'
+    $Company = if ($IdSegments.Count -ge 3) { ConvertTo-PascalCase $IdSegments[1] } else { "" }
+    return (@($Company, (ConvertTo-PascalCase $Name)) | Where-Object { $_ }) -join '.'
+}
+
+# Ask for everything that was not passed. Defaults come from the git remote:
+# github.com/User/cool-package -> "User/cool-package", "Cool Package", "com.user.cool-package".
+$Asked = $false
+if ((Test-UiEnabled) -and (-not $PackageId -or -not $PackageName -or -not $GitHubRepository)) {
+    $AskAll = $PSBoundParameters.Count -eq 0
+    $Asked = $true
+    Write-UiHeader "Initialize the package"
+
+    $RemoteSlug = ""
+    try {
+        $RemoteUrl = [string](& git -C $RepoRoot remote get-url origin 2>$null)
+        if ($RemoteUrl -match 'github\.com[:/]([^/]+/[^/]+?)(\.git)?$' -and $Matches[1] -match $GitHubRepositoryPattern) {
+            $RemoteSlug = $Matches[1]
+        }
+    }
+    catch { }
+    if (-not $GitHubRepository) {
+        $GitHubRepository = Read-UiInput -Question "GitHub repository" -Default $RemoteSlug -Pattern $GitHubRepositoryPattern -Hint "Use 'Username/Repository-Name'."
+    }
+
+    $Owner, $RepositoryName = $GitHubRepository -split '/', 2
+    if (-not $PackageName) {
+        $DefaultName = ((($RepositoryName -split '[-_.]+') | Where-Object { $_ } | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }) -join ' ')
+        $PackageName = Read-UiInput -Question "Package display name" -Default $DefaultName -Pattern '\S' -Hint "Enter a name."
+    }
+    if (-not $PackageId) {
+        $IdPart = { param($Text) (($Text.ToLower() -replace '[^a-z0-9_-]+', '-').Trim('-')) }
+        $DefaultId = "com.$(& $IdPart $Owner).$(& $IdPart $PackageName)"
+        $PackageId = Read-UiInput -Question "Package id" -Default $DefaultId -Pattern $PackageIdPattern -Hint "Use a lowercase reverse-domain name such as 'com.company.cool-package'."
+    }
+    if ($AskAll) {
+        $RootNamespace = Read-UiInput -Question "C# root namespace" -Default (Get-DefaultRootNamespace $PackageId $PackageName) -Pattern $NamespacePattern -Hint "Use a C# namespace such as 'Company.CoolPackage'."
+    }
+}
+
+foreach ($Required in @("PackageId", "PackageName", "GitHubRepository")) {
+    if (-not (Get-Variable -Name $Required -ValueOnly)) {
+        throw "-$Required is required (see Get-Help $PSCommandPath)."
+    }
+}
+
 # Package Manager accepts lowercase reverse-domain names only.
-if ($PackageId -cnotmatch '^[a-z0-9_-]+(\.[a-z0-9_-]+){2,}$') {
+if ($PackageId -cnotmatch $PackageIdPattern) {
     throw "Invalid package id '$PackageId'. Use a lowercase reverse-domain name such as 'com.company.cool-package'."
 }
-if ($GitHubRepository -notmatch '^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$') {
+if ($GitHubRepository -notmatch $GitHubRepositoryPattern) {
     throw "Invalid GitHub repository '$GitHubRepository'. Use 'Username/Repository-Name'."
 }
 
-# Prompt for InstallerExtraPath if not provided
+# Ask for InstallerExtraPath if not provided
 if (-not $PSBoundParameters.ContainsKey('InstallerExtraPath')) {
-    Write-Host "Optional: Enter an extra path for the Installer (e.g., 'Editor')." -ForegroundColor Cyan
-    Write-Host "Press Enter to skip." -ForegroundColor Gray
-    $InstallerExtraPath = Read-Host "Installer Extra Path"
+    if (Test-UiEnabled) {
+        $Asked = $true
+        $Choice = Read-UiSelect -Question "Installer location" -Options @(
+            "Installer/Assets/Editor/$PackageName Installer",
+            "Installer/Assets/$PackageName Installer",
+            "Another folder..."
+        )
+        $InstallerExtraPath = switch ($Choice) {
+            0 { "Editor" }
+            1 { "" }
+            2 { Read-UiInput -Question "Folder between Assets/ and the installer folder" -Pattern '^([^\\/].*)?$' -Hint "Use a relative path such as 'Editor/Tools'." }
+        }
+    }
+    else {
+        Write-Host "Optional: Enter an extra path for the Installer (e.g., 'Editor')." -ForegroundColor Cyan
+        Write-Host "Press Enter to skip." -ForegroundColor Gray
+        $InstallerExtraPath = Read-Host "Installer Extra Path"
+    }
 }
 
 # Normalize InstallerExtraPath
@@ -103,21 +182,11 @@ if (-not [string]::IsNullOrWhiteSpace($InstallerExtraPath)) {
 # Derived variables
 $PackageIdLowercase = $PackageId.ToLower()
 
-# "Cool Package" -> "CoolPackage", "cool-package" -> "CoolPackage"
-function ConvertTo-PascalCase {
-    param([string]$Text)
-    $Words = $Text -split '[^A-Za-z0-9]+' | Where-Object { $_ }
-    return ($Words | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }) -join ''
-}
-
 $PackageNamePascal = ConvertTo-PascalCase $PackageName
 if ([string]::IsNullOrWhiteSpace($RootNamespace)) {
-    # Skip the reverse-domain prefix ("com", "org", ...) and use the company segment.
-    $IdSegments = $PackageIdLowercase -split '\.'
-    $Company = if ($IdSegments.Count -ge 3) { ConvertTo-PascalCase $IdSegments[1] } else { "" }
-    $RootNamespace = (@($Company, $PackageNamePascal) | Where-Object { $_ }) -join '.'
+    $RootNamespace = Get-DefaultRootNamespace $PackageId $PackageName
 }
-if ($RootNamespace -notmatch '^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$') {
+if ($RootNamespace -notmatch $NamespacePattern) {
     throw "Invalid root namespace '$RootNamespace'. Pass a valid C# namespace with -RootNamespace."
 }
 
@@ -171,6 +240,10 @@ if (-not [string]::IsNullOrWhiteSpace($InstallerExtraPath)) {
     Write-Host "  Installer Extra Path: $InstallerExtraPath"
 }
 Write-Host ""
+if ($Asked -and -not (Read-UiConfirm "Initialize with these values?")) {
+    Write-Host "Cancelled, nothing was changed." -ForegroundColor Yellow
+    exit 0
+}
 
 # Folders that get placeholders replaced, with the folders to skip inside them.
 # Unity's generated folders can be huge and must never be rewritten.

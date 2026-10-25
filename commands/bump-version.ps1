@@ -9,7 +9,9 @@
     Supports preview mode for safe testing.
 
 .PARAMETER NewVersion
-    The new version number in semver format (e.g., "0.18.0")
+    The new version number in semver format (e.g., "0.18.0"). Run in a console without
+    it, the script offers the next patch, minor, major or preview version and asks
+    about -SyncDocs and -WhatIf.
 
 .PARAMETER WhatIf
     Preview changes without applying them
@@ -37,7 +39,7 @@
 #>
 
 param(
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $false)]
     [string]$NewVersion,
 
     [switch]$WhatIf,
@@ -200,6 +202,45 @@ function Update-VersionFiles {
 try {
     Write-ColorText "Package Version Bump Script" "Cyan"
     Write-ColorText "=================================" "Cyan"
+
+    # Without a version, offer the next ones: 1.2.3 -> 1.2.4, 1.3.0, 2.0.0, 1.2.4-preview.1;
+    # a prerelease 1.3.0-preview.1 -> 1.3.0, 1.3.0-preview.2.
+    if (-not $NewVersion) {
+        if (-not (Test-UiEnabled)) {
+            throw "-NewVersion is required (see Get-Help $PSCommandPath)."
+        }
+        $current = Get-CurrentVersion
+        Write-UiHeader "Bump the package version (current: $current)"
+        $null = $current -match '^(\d+)\.(\d+)\.(\d+)(?:-([^+]+))?'
+        $major, $minor, $patch = [int]$Matches[1], [int]$Matches[2], [int]$Matches[3]
+        $prerelease = $Matches[4]
+        if ($prerelease) {
+            $nextPrerelease = if ($prerelease -match '^(.*?)(\d+)$') { $Matches[1] + ([int]$Matches[2] + 1) } else { "$prerelease.1" }
+            $versions = @("$major.$minor.$patch", "$major.$minor.$patch-$nextPrerelease")
+            $labels = @("$($versions[0])  release", "$($versions[1])  next preview")
+        }
+        else {
+            $versions = @("$major.$minor.$($patch + 1)", "$major.$($minor + 1).0", "$($major + 1).0.0", "$major.$minor.$($patch + 1)-preview.1")
+            $labels = @("$($versions[0])  patch", "$($versions[1])  minor", "$($versions[2])  major", "$($versions[3])  preview")
+        }
+        $choice = Read-UiSelect -Question "New version" -Options ($labels + "Other...")
+        if ($choice -lt $versions.Count) {
+            $NewVersion = $versions[$choice]
+        }
+        else {
+            $NewVersion = Read-UiInput -Question "New version" -Pattern '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$' -Hint "Use major.minor.patch, e.g. 1.2.3 or 1.2.3-preview.1."
+        }
+        if (-not $SyncDocs) {
+            $choice = Read-UiSelect -Question "Copy README.md and CHANGELOG.md first?" -Options @("No", "Root -> package  ToPackage", "Package -> root  ToRoot")
+            if ($choice -eq 1) { $SyncDocs = "ToPackage" }
+            if ($choice -eq 2) { $SyncDocs = "ToRoot" }
+        }
+        if (-not $WhatIf) {
+            $choice = Read-UiSelect -Question "Apply the changes?" -Options @("Apply", "Preview only  -WhatIf")
+            if ($choice -eq 1) { $WhatIf = $true }
+        }
+        Write-Host ""
+    }
 
     # Validate semantic version format
     if (-not (Test-SemanticVersion $NewVersion)) {

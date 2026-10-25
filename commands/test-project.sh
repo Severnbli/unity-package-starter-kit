@@ -17,6 +17,8 @@
 #   ./commands/test-project.sh --add 2023.2.22f1 [--from 2022.3.62f3]
 #   ./commands/test-project.sh --remove 2022.3.62f3
 #   ./commands/test-project.sh --sync      # only rewrite the workflow matrix
+#
+# Run in a terminal without options, the script asks what to do in a menu.
 
 set -euo pipefail
 . "$(dirname "$0")/lib/common.sh"
@@ -29,6 +31,8 @@ usage() {
 ACTION="list"
 VERSION=""
 FROM=""
+ASK=false
+[ $# -eq 0 ] && ui_enabled && ASK=true
 while [ $# -gt 0 ]; do
   case "$1" in
     --add) ACTION="add"; VERSION="${2:-}"; shift 2 ;;
@@ -91,6 +95,60 @@ closest_project() {
   done <<<"$candidates"
   printf '%s\n' "${below:-$first}"
 }
+
+if [ "$ASK" = true ]; then
+  ui_header "Test projects"
+  show_projects
+  echo ""
+  ui_select CHOICE "What do you want to do?" 0 \
+    "Add a test project" \
+    "Remove a test project" \
+    "Sync the workflow matrix with Unity-Tests/" \
+    "Nothing, just list them"
+  case "$CHOICE" in
+    0)
+      ACTION="add"
+      while :; do
+        ui_input VERSION "Unity version of the new project" "" "$UNITY_VERSION_RE" "Use an editor version such as 2023.2.22f1."
+        [ -e "$UNITY_TESTS_DIR/$VERSION" ] || break
+        warn "Unity-Tests/$VERSION already exists."
+      done
+      EXISTING=()
+      while IFS= read -r project; do EXISTING+=("$project"); done < <(unity_test_projects)
+      if [ "${#EXISTING[@]}" -gt 1 ]; then
+        CLOSEST="$(closest_project "$VERSION")"
+        LABELS=()
+        DEFAULT=0
+        i=0
+        for project in "${EXISTING[@]}"; do
+          if [ "$project" = "$CLOSEST" ]; then
+            LABELS+=("$project (closest)")
+            DEFAULT="$i"
+          else
+            LABELS+=("$project")
+          fi
+          i=$((i + 1))
+        done
+        ui_select CHOICE "Copy which project?" "$DEFAULT" "${LABELS[@]}"
+        FROM="${EXISTING[$CHOICE]}"
+      fi
+      ;;
+    1)
+      ACTION="remove"
+      EXISTING=()
+      while IFS= read -r project; do EXISTING+=("$project"); done < <(unity_test_projects)
+      [ "${#EXISTING[@]}" -gt 1 ] || die "Unity-Tests/${EXISTING[0]:-} is the last test project. Add another one first: the workflow matrix cannot be empty."
+      ui_select CHOICE "Remove which project?" 0 "${EXISTING[@]}"
+      VERSION="${EXISTING[$CHOICE]}"
+      if ! ui_confirm "Delete Unity-Tests/$VERSION and everything in it?" no; then
+        say "Cancelled, nothing was changed." "$C_YELLOW"
+        exit 0
+      fi
+      ;;
+    2) ACTION="sync" ;;
+    3) exit 0 ;;
+  esac
+fi
 
 case "$ACTION" in
   add)

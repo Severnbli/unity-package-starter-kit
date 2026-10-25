@@ -33,7 +33,7 @@ and CI that tests, signs and releases the package to OpenUPM
 | `Unity-Package/Assets/root/` | The package itself. Nothing outside this folder is shipped. |
 | `Installer/` | Project that exports the installer `.unitypackage`, which adds the OpenUPM registry and pins the version. |
 | `Unity-Tests/<version>/` | One empty project per tested Unity version, referencing the package as a local, testable dependency. |
-| `commands/` | Init, version bump, consistency check, test project and "open all projects" scripts. |
+| `commands/` | A menu plus the init, version bump, consistency check, test project and "open all projects" scripts. |
 | `.github/workflows/` | Test matrix and release pipeline (`*.yml-sample` until init). |
 | `docs/` | Release and signing guides. |
 
@@ -51,6 +51,22 @@ Every script in `commands/` comes in two flavours with the same options:
 > [!TIP]
 > The `.cmd` launcher works from cmd and PowerShell. It runs the `.ps1` of the same name with `-ExecutionPolicy Bypass` for that one process, so the default execution policy does not block it and no system setting changes. If your policy already allows scripts, run the `.ps1` directly.
 
+### Menu
+
+You don't need to remember any options. The menu runs every other script:
+
+```bash
+./commands/menu.sh
+```
+
+```bat
+commands\menu.cmd
+```
+
+Pick a script with the arrow keys and press Enter. The script then asks for everything it needs, with defaults you can accept with Enter: init reads them from the git remote, bump-version offers the next patch, minor, major and preview versions, and open-all-projects shows a checklist of projects with their editor versions. The menu comes back when the script ends.
+
+Every script also asks for missing options on its own when run in a terminal, e.g. `./commands/init.sh` with no options. With options, outside a terminal or in CI (`CI` set), the scripts never ask and behave as described below.
+
 Examples below show the macOS / Linux command first, then the Windows one.
 
 ---
@@ -62,6 +78,8 @@ Examples below show the macOS / Linux command first, then the Windows one.
 Create a new repository from this template on GitHub and clone it.
 
 ### 2. Initialize
+
+Run init from the [menu](#menu), or pass the options yourself:
 
 ```bash
 ./commands/init.sh --package-id com.company.cool-package --package-name "Cool Package" --github-repository User/cool-package --installer-extra-path Editor
@@ -259,7 +277,7 @@ This repository is a fork of Ivan Murzak's [Unity-Package-Template](https://gith
 
 | Area | Changes |
 |---|---|
-| Scripts | Every script exists as `.sh` and as `.ps1` with a `.cmd` launcher, running on the built-in Windows PowerShell 5.1; upstream has PowerShell scripts plus separate `open-all-projects-unix.sh` / `open-all-projects-windows.ps1`. New `check-package` and `test-project` scripts. `init` adds `--root-namespace`, the `YOUR_ROOT_NAMESPACE` and `YOUR_PACKAGE_NAME_PASCAL` placeholders, enables the workflows, swaps in the package README and refuses to run twice. `bump-version` adds prerelease versions, `--what-if` and `--sync-docs`. `open-all-projects` uses each project's editor version and Unity Hub's custom install folder. |
+| Scripts | Every script exists as `.sh` and as `.ps1` with a `.cmd` launcher, running on the built-in Windows PowerShell 5.1; upstream has PowerShell scripts plus separate `open-all-projects-unix.sh` / `open-all-projects-windows.ps1`. New `menu`, `check-package` and `test-project` scripts, and every script asks for missing options with arrow-key menus. `init` adds `--root-namespace`, the `YOUR_ROOT_NAMESPACE` and `YOUR_PACKAGE_NAME_PASCAL` placeholders, enables the workflows, swaps in the package README and refuses to run twice. `bump-version` adds prerelease versions, `--what-if` and `--sync-docs`. `open-all-projects` uses each project's editor version and Unity Hub's custom install folder. |
 | CI | `test.yml-sample` replaces `test_pull_request.yml-sample`: a matrix built from `Unity-Tests/`, license-free checks first, only touched projects tested, older runs cancelled. `release.yml-sample` runs on demand instead of on every push to `main` and adds build provenance attestations. Actions are referenced by version tag, and the UPM CLI install script is not checked against a SHA-256. |
 | Package and installer | C# namespaces use `YOUR_ROOT_NAMESPACE` instead of the package id, because ids may contain `-`. The installer adds only the package's own scope to the OpenUPM registry, not Ivan Murzak's and NuGet scopes; its define is `PACKAGE_INSTALLER_PROJECT` instead of `IVAN_MURZAK_INSTALLER_PROJECT`, and its test fixtures are reworked. `package.json` targets Unity `2021.3` instead of `2019.4` and links the documentation, changelog and license. The package skeleton drops `Editor/Gizmos` and `Editor/Scripts` and gains a README template. |
 | Test projects | `2023.2.22f1` is removed; `2022.3.62f3` and `6000.3.1f1` remain. The projects list the package under `testables` instead of carrying sample test assemblies, and no longer commit `packages-lock.json` or the OpenUPM registry. |

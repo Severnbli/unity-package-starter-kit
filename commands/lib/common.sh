@@ -116,3 +116,5 @@ relative_path() {
 
 require git
 require perl
+
+. "$(dirname "${BASH_SOURCE[0]}")/ui.sh"

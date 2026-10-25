@@ -15,6 +15,9 @@
 #                        package copies are identical:
 #                          to-package  from the repository root to Unity-Package/Assets/root
 #                          to-root     from Unity-Package/Assets/root to the repository root
+#
+# Run in a terminal without a version, the script offers the next patch, minor, major or
+# preview version and asks about --sync-docs and --what-if.
 
 set -euo pipefail
 . "$(dirname "$0")/lib/common.sh"
@@ -39,7 +42,7 @@ while [ $# -gt 0 ]; do
     *) [ -z "$NEW_VERSION" ] || usage 1; NEW_VERSION="$1"; shift ;;
   esac
 done
-[ -n "$NEW_VERSION" ] || usage 1
+[ -n "$NEW_VERSION" ] || ui_enabled || usage 1
 
 cd "$REPO_ROOT"
 
@@ -49,18 +52,51 @@ export VERSION_VALUE='\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?'
 say "🚀 Package Version Bump Script" "$C_CYAN"
 say "=================================" "$C_CYAN"
 
-if ! printf '%s' "$NEW_VERSION" | perl -ne 'exit(/\A\d+\.\d+\.\d+(-[a-zA-Z0-9\-\.]+)?(\+[a-zA-Z0-9\-\.]+)?\z/ ? 0 : 1)'; then
-  say "❌ Invalid semantic version format: $NEW_VERSION" "$C_RED"
-  say "Expected format: major.minor.patch (e.g., '1.2.3')" "$C_YELLOW"
-  exit 1
-fi
-
 PACKAGE_JSON="Unity-Package/Assets/root/package.json"
 [ -f "$PACKAGE_JSON" ] || die "Could not find package.json at: $PACKAGE_JSON"
 CURRENT_VERSION="$(perl -ne 'if (/"version":\s*"($ENV{VERSION_VALUE})"/) { print $1; exit }' "$PACKAGE_JSON")"
 [ -n "$CURRENT_VERSION" ] || die "Could not extract current version from package.json"
 export PACKAGE_NAME
 PACKAGE_NAME="$(perl -ne 'if (/^\s*"name":\s*"([^"]+)"/) { print $1; exit }' "$PACKAGE_JSON")"
+
+# Without a version, offer the next ones: 1.2.3 -> 1.2.4, 1.3.0, 2.0.0, 1.2.4-preview.1;
+# a prerelease 1.3.0-preview.1 -> 1.3.0, 1.3.0-preview.2.
+if [ -z "$NEW_VERSION" ]; then
+  ui_header "Bump the package version (current: $CURRENT_VERSION)"
+  read -r MAJOR MINOR PATCH PRERELEASE <<<"$(printf '%s' "$CURRENT_VERSION" | perl -ne '/^(\d+)\.(\d+)\.(\d+)(?:-([^+]+))?/ and print "$1 $2 $3 $4"')"
+  if [ -n "$PRERELEASE" ]; then
+    NEXT_PRERELEASE="$(printf '%s' "$PRERELEASE" | perl -pe 's/(\d+)$/$1 + 1/e or $_ .= ".1"')"
+    VERSIONS=("$MAJOR.$MINOR.$PATCH" "$MAJOR.$MINOR.$PATCH-$NEXT_PRERELEASE")
+    LABELS=("${VERSIONS[0]}  ${C_GRAY}release${C_RESET}" "${VERSIONS[1]}  ${C_GRAY}next preview${C_RESET}")
+  else
+    VERSIONS=("$MAJOR.$MINOR.$((PATCH + 1))" "$MAJOR.$((MINOR + 1)).0" "$((MAJOR + 1)).0.0" "$MAJOR.$MINOR.$((PATCH + 1))-preview.1")
+    LABELS=("${VERSIONS[0]}  ${C_GRAY}patch${C_RESET}" "${VERSIONS[1]}  ${C_GRAY}minor${C_RESET}" "${VERSIONS[2]}  ${C_GRAY}major${C_RESET}" "${VERSIONS[3]}  ${C_GRAY}preview${C_RESET}")
+  fi
+  ui_select CHOICE "New version" 0 "${LABELS[@]}" "Other..."
+  if [ "$CHOICE" -lt "${#VERSIONS[@]}" ]; then
+    NEW_VERSION="${VERSIONS[$CHOICE]}"
+  else
+    ui_input NEW_VERSION "New version" "" '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$' "Use major.minor.patch, e.g. 1.2.3 or 1.2.3-preview.1."
+  fi
+  if [ -z "$SYNC_DOCS" ]; then
+    ui_select CHOICE "Copy README.md and CHANGELOG.md first?" 0 \
+      "No" \
+      "Root -> package  ${C_GRAY}to-package${C_RESET}" \
+      "Package -> root  ${C_GRAY}to-root${C_RESET}"
+    case "$CHOICE" in 1) SYNC_DOCS="to-package" ;; 2) SYNC_DOCS="to-root" ;; esac
+  fi
+  if [ "$WHAT_IF" = false ]; then
+    ui_select CHOICE "Apply the changes?" 0 "Apply" "Preview only  ${C_GRAY}--what-if${C_RESET}"
+    [ "$CHOICE" -eq 0 ] || WHAT_IF=true
+  fi
+  echo ""
+fi
+
+if ! printf '%s' "$NEW_VERSION" | perl -ne 'exit(/\A\d+\.\d+\.\d+(-[a-zA-Z0-9\-\.]+)?(\+[a-zA-Z0-9\-\.]+)?\z/ ? 0 : 1)'; then
+  say "❌ Invalid semantic version format: $NEW_VERSION" "$C_RED"
+  say "Expected format: major.minor.patch (e.g., '1.2.3')" "$C_YELLOW"
+  exit 1
+fi
 
 # The installer folder moves and is renamed by init, so find it instead of hard-coding it.
 INSTALLER_FILES="$(grep -rlF --include=Installer.cs "public const string Version" Installer/Assets || true)"

@@ -154,3 +154,5 @@ function Get-RepositoryFiles {
     }
     return @($Output | Where-Object { $_ } | Sort-Object -Unique -CaseSensitive)
 }
+
+. (Join-Path $PSScriptRoot "Ui.ps1")

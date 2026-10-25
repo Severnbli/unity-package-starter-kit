@@ -14,6 +14,9 @@
     Editors are looked up in the Unity Hub install folders of the current platform,
     including a custom install location configured in Unity Hub.
 
+    Run in a console without parameters, the script lists every project with its editor
+    version and lets you tick the ones to open.
+
 .PARAMETER EditorsPath
     Optional. Additional folder that contains editors as <version>/..., checked first.
 
@@ -107,16 +110,34 @@ function Get-UnityExecutable {
     return $null
 }
 
+$Roots = Get-EditorRoots
+if ($Roots.Count -eq 0) {
+    Write-Error "No Unity editors folder found. Install editors with Unity Hub or pass -EditorsPath."
+}
+
+if ($PSBoundParameters.Count -eq 0 -and (Test-UiEnabled)) {
+    Write-UiHeader "Open Unity projects"
+    $Candidates = @("Installer", "Unity-Package") + @(Get-UnityTestProjects | ForEach-Object { "Unity-Tests/$_" })
+    $Labels = foreach ($Candidate in $Candidates) {
+        $Version = Get-ProjectUnityVersion (Join-Path $RepoRoot $Candidate)
+        if (-not $Version) { "$Candidate  (no editor version)" }
+        elseif (Get-UnityExecutable -Roots $Roots -Version $Version) { "$Candidate  Unity $Version" }
+        else { "$Candidate  Unity $Version is not installed" }
+    }
+    $Selected = Read-UiMultiSelect -Question "Projects to open" -Options $Labels -Checked @(0, 1)
+    if ($Selected.Count -eq 0) {
+        Write-Host "Nothing selected." -ForegroundColor Yellow
+        exit 0
+    }
+    $Projects = @($Selected | ForEach-Object { $Candidates[$_] })
+    Write-Host ""
+}
+
 if (-not $Projects) {
     $Projects = @("Installer", "Unity-Package")
     if ($WithTests) {
         $Projects += @(Get-UnityTestProjects | ForEach-Object { "Unity-Tests/$_" })
     }
-}
-
-$Roots = Get-EditorRoots
-if ($Roots.Count -eq 0) {
-    Write-Error "No Unity editors folder found. Install editors with Unity Hub or pass -EditorsPath."
 }
 
 Write-Host "Opening Unity projects..." -ForegroundColor Cyan
