@@ -1,90 +1,60 @@
 name: test-unity-plugin
 
-##############################################################################
-# 1. Triggers
-##############################################################################
+# Runs one Unity test mode for one project. Called by test.yml for every
+# matrix cell (and for the Installer project).
+#
+# Fork PRs do not receive secrets, so Unity activation fails for outside
+# contributors. That is intentional here (no pull_request_target).
 on:
-  workflow_dispatch:
   workflow_call:
     inputs:
       projectPath: { required: true, type: string }
       unityVersion: { required: true, type: string }
       testMode: { required: true, type: string }
+      # Short project label for check, job and artifact names (paths contain '/').
+      label: { required: false, type: string, default: plugin }
     secrets:
       UNITY_LICENSE: { required: true }
       UNITY_EMAIL: { required: true }
       UNITY_PASSWORD: { required: true }
 
-##############################################################################
-# 2. Job – runs only after a maintainer applies the `ci-ok` label
-##############################################################################
+# Allow the test runner to publish results as a check run.
+permissions:
+  contents: read
+  checks: write
+
 jobs:
   test:
-    if: |
-      github.event_name != 'pull_request_target' ||
-      contains(github.event.pull_request.labels.*.name,'ci-ok')
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest]
-        platform: [base, windows-mono]
-
-    name: ${{ inputs.unityVersion }} ${{ inputs.testMode }} on ${{ matrix.platform }}
-    runs-on: ${{ matrix.os }}
-
-    # permissions: # minimize the default token
-    #   contents: write
-    #   pull-requests: write
-
+    name: ${{ inputs.label }} ${{ inputs.unityVersion }} ${{ inputs.testMode }}
+    runs-on: ubuntu-latest
     steps:
-      # --------------------------------------------------------------------- #
-      # 2-a. (PR only) abort if the contributor also changed workflow files
-      # --------------------------------------------------------------------- #
-      - name: Abort if workflow files modified
-        if: ${{ github.event_name == 'pull_request_target' }}
-        run: |
-          git fetch --depth=1 origin "${{ github.base_ref }}"
-          if git diff --name-only HEAD origin/${{ github.base_ref }} | grep -q '^\.github/workflows/'; then
-            echo "::error::This PR edits workflow files – refusing to run with secrets"; exit 1;
-          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # --------------------------------------------------------------------- #
-      # 2-b. Checkout the contributor’s commit safely
-      # --------------------------------------------------------------------- #
-      - uses: actions/checkout@v6
-        with:
-          lfs: false
-
-      # --------------------------------------------------------------------- #
-      # 2-c. Free disk space
-      # --------------------------------------------------------------------- #
+      # The editor image needs more room than a stock runner has. Deleting the
+      # preinstalled SDKs is a quick `rm -rf`; uninstalling apt packages
+      # (large-packages) takes minutes and is not needed for the space.
       - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
+        uses: jlumbroso/free-disk-space@36e9a5af4eddb91fc11aec4c6f6f79b3cc0cb523 # main
         with:
           tool-cache: false
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false
           swap-storage: true
 
-      # --------------------------------------------------------------------- #
-      # 2-d. Cache & run the Unity test-runner
-      # --------------------------------------------------------------------- #
-      - uses: actions/cache@v4
+      # Library/ is shared by every test mode of a project and editor version,
+      # so one cache serves editmode, playmode and standalone. The key changes
+      # whenever the package set changes; restore-keys falls back to the most
+      # recent cache of the same project and version.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            ${{ inputs.projectPath }}/Library
-            ~/.cache/unity3d
-          key: ${{ inputs.unityVersion }} ${{ inputs.testMode }} on ${{ matrix.platform }}
+          path: ${{ inputs.projectPath }}/Library
+          key: Library-${{ inputs.label }}-${{ inputs.unityVersion }}-${{ hashFiles(format('{0}/Packages/manifest.json', inputs.projectPath), format('{0}/Packages/packages-lock.json', inputs.projectPath)) }}
+          restore-keys: |
+            Library-${{ inputs.label }}-${{ inputs.unityVersion }}-
 
-      # --------------------------------------------------------------------- #
-      - name: Generate custom image name
-        id: custom_image
-        run: echo "image=unityci/editor:ubuntu-${{ inputs.unityVersion }}-${{ matrix.platform }}-3" >> $GITHUB_OUTPUT
-        shell: bash
-
-      - uses: game-ci/unity-test-runner@v4
+      - uses: game-ci/unity-test-runner@32e57712352b500e17974b245a6dce9e11a73213 # v4
         id: tests
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -94,15 +64,15 @@ jobs:
           projectPath: ${{ inputs.projectPath }}
           unityVersion: ${{ inputs.unityVersion }}
           testMode: ${{ inputs.testMode }}
-          customImage: ${{ steps.custom_image.outputs.image }}
+          customImage: unityci/editor:ubuntu-${{ inputs.unityVersion }}-base-3
           githubToken: ${{ secrets.GITHUB_TOKEN }}
-          checkName: ${{ inputs.unityVersion }} ${{ inputs.testMode }} ${{ matrix.platform }} Test Results
-          artifactsPath: artifacts-${{ inputs.unityVersion }}-${{ inputs.testMode }}-${{ matrix.platform }}
+          checkName: ${{ inputs.label }} ${{ inputs.unityVersion }} ${{ inputs.testMode }} Test Results
+          artifactsPath: artifacts
           customParameters: -CI true -GITHUB_ACTIONS true
 
-      # --------------------------------------------------------------------- #
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: Test results for ${{ inputs.unityVersion }} ${{ inputs.testMode }} on ${{ matrix.platform }}
+          name: test-results-${{ inputs.label }}-${{ inputs.unityVersion }}-${{ inputs.testMode }}
           path: ${{ steps.tests.outputs.artifactsPath }}
+          retention-days: 7

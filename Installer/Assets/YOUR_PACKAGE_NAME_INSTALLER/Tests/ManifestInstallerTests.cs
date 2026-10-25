@@ -11,7 +11,7 @@ using System.IO;
 using NUnit.Framework;
 using UnityEngine;
 
-namespace YOUR_PACKAGE_ID.Installer.Tests
+namespace YOUR_ROOT_NAMESPACE.Installer.Tests
 {
     public class ManifestInstallerTests
     {

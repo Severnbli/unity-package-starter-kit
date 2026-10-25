@@ -1,0 +1,108 @@
+name: test
+
+# Single source of truth for the test matrix: pull requests run it directly
+# and release.yml calls it, so a release is gated on exactly the same tests.
+on:
+  workflow_dispatch:
+  workflow_call:
+  pull_request:
+    branches: [main, dev]
+    types: [opened, synchronize, reopened]
+    # Only run when something the tests depend on changes.
+    # (paths and paths-ignore can't be combined; "!" patterns exclude from the list above them.)
+    paths:
+      - "Unity-Package/**"
+      - "Unity-Tests/**"
+      - "Installer/**"
+      - "commands/check-package.sh"
+      - ".github/workflows/test.yml"
+      - ".github/workflows/test_unity_plugin.yml"
+      - "!**.md"
+      - "!Unity-Package/Assets/root/Documentation~/**"
+
+# A new push to the same PR cancels the previous (expensive) Unity run. Any
+# other run (manual, or called by a release) gets its own group, so it never
+# cancels or is cancelled by another one.
+concurrency:
+  group: test-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # License-free checks. They take seconds, so they run first and gate the
+  # Unity jobs, and they decide which Unity projects a PR actually touches.
+  checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      plugin: ${{ steps.changes.outputs.plugin }}
+      installer: ${{ steps.changes.outputs.installer }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check package consistency
+        run: bash commands/check-package.sh
+
+      - name: Detect changed projects
+        id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Outside pull requests (manual run, release) everything is tested.
+          if [ -z "$PR_NUMBER" ]; then
+            echo "plugin=true" >> "$GITHUB_OUTPUT"
+            echo "installer=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          files="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename')"
+          printf 'Changed files:\n%s\n' "$files"
+          # Same exclusions as the trigger's "!" patterns: docs never need Unity.
+          files="$(grep -Ev '\.md$|^Unity-Package/Assets/root/Documentation~/' <<<"$files" || true)"
+
+          # Workflow changes affect every Unity job.
+          shared='^(\.github/workflows/(test|test_unity_plugin)\.yml)$'
+          plugin=false
+          installer=false
+          if grep -Eq "$shared|^(Unity-Package|Unity-Tests)/" <<<"$files"; then plugin=true; fi
+          if grep -Eq "$shared|^Installer/" <<<"$files"; then installer=true; fi
+          echo "plugin=${plugin}" >> "$GITHUB_OUTPUT"
+          echo "installer=${installer}" >> "$GITHUB_OUTPUT"
+
+  test-plugin:
+    needs: [checks]
+    if: needs.checks.outputs.plugin == 'true'
+    permissions:
+      contents: read
+      checks: write
+    strategy:
+      fail-fast: false
+      matrix:
+        unityVersion: [2022.3.62f3, 6000.3.1f1]
+        testMode: [editmode, playmode, standalone]
+    uses: ./.github/workflows/test_unity_plugin.yml
+    with:
+      projectPath: ./Unity-Tests/${{ matrix.unityVersion }}
+      unityVersion: ${{ matrix.unityVersion }}
+      testMode: ${{ matrix.testMode }}
+    secrets: inherit
+
+  test-installer:
+    needs: [checks]
+    if: needs.checks.outputs.installer == 'true'
+    permissions:
+      contents: read
+      checks: write
+    uses: ./.github/workflows/test_unity_plugin.yml
+    with:
+      projectPath: ./Installer
+      unityVersion: 2022.3.62f3
+      testMode: editmode
+      label: installer
+    secrets: inherit
