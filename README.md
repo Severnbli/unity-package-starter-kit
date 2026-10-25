@@ -4,7 +4,7 @@
 
 **Template for Unity Package Manager packages**<br>
 A package project, an installer, test projects for several Unity versions,<br>
-and CI that tests, signs and releases the package to OpenUPM.
+and CI that tests, signs and releases the package to OpenUPM
 
 [![Use this template](https://img.shields.io/badge/Use_this_template-2ea44f?style=for-the-badge&logo=github)](https://github.com/Severnbli/unity-package-starter-kit/generate)
 
