@@ -1,6 +1,6 @@
 # OpenUPM Package Signing
 
-> **Template note:** `commands/init.ps1` replaces `YOUR_PACKAGE_ID` (your
+> **Template note:** `commands/init.sh` (or `init.ps1` on Windows) replaces `YOUR_PACKAGE_ID` (your
 > reverse-domain package id, e.g. `com.company.package`) and
 > `YOUR_GITHUB_USERNAME_REPOSITORY` (your `owner/repo` slug) in this document,
 > the same way it does in `.github/workflows/release.yml`.
@@ -26,7 +26,7 @@ References:
 
 The signing step is implemented as the `build-signed-upm-package` job in
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) (enabled from
-`release.yml-sample` by `commands/init.ps1`). It runs in parallel with tests and builds on every
+`release.yml-sample` by `commands/init.sh` / `init.ps1`). It runs in parallel with tests and builds on every
 manually triggered release, packs the package at
 `Unity-Package/Assets/root/` with Unity's UPM CLI, verifies the resulting archive
 contains `package/.attestation.p7m` and that its basename begins with
@@ -117,6 +117,18 @@ to sign package … with the provided credentials and organization`:
 > namespace association. Do it once, from any machine, with an account that is a
 > member of the signing organization.
 
+> [!TIP]
+> Only some Unity versions can sign. The **Export** button with the **Authoring
+> Org** dropdown exists only from [Unity 6.3 (6000.3)](https://docs.unity3d.com/6000.3/Documentation/Manual/cus-export.html)
+> onward, so do the interactive sign in **Unity 6000.3.5f2 or newer**. Every 6.3
+> build before 6000.3.5f2 can [report a validly signed package as invalid](https://docs.unity3d.com/6000.3/Documentation/Manual/upm-signature.html).
+> Sign in to Unity Hub first. You can only sign packages that Package Manager labels
+> **Custom** or **Local**, such as the package opened from `Unity-Package/`.
+> The Editor version you sign with does not depend on the minimum `unity` version
+> in `package.json`. A package that supports older editors can still be signed from
+> 6.3. Releases made before signing stay unsigned, as
+> [OpenUPM notes](https://openupm.com/docs/signing-upm-packages).
+
 ### 4. File the OpenUPM listing change
 
 If you publish via OpenUPM, OpenUPM's package listing for `YOUR_PACKAGE_ID` likely
@@ -190,3 +202,10 @@ After the next release ships:
   the OpenUPM listing is still on `trackingMode: git` (OpenUPM is serving the
   unsigned git-packed version, not the release asset). File the
   `openupm/openupm` PR described above.
+- **Package Manager reports a signed package as invalid** – you are on a Unity 6.3
+  build older than 6000.3.5f2, which has a
+  [known signature validation issue](https://docs.unity3d.com/6000.3/Documentation/Manual/upm-signature.html).
+  Update the Editor to 6000.3.5f2 or newer. The signature itself is fine.
+- **The Editor has no Export button or Authoring Org dropdown** – the Editor is older
+  than Unity 6.3, or the package is not labeled **Custom** or **Local** in Package
+  Manager. Use Unity 6000.3.5f2 or newer and open the package from `Unity-Package/`.
