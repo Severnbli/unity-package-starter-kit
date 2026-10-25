@@ -1,2 +1,16 @@
+# IDE and editor settings (all folders of the repository)
+.vscode/
+.idea/
+.vs/
+.fleet/
+.zed/
+*.code-workspace
+*.sublime-project
+*.sublime-workspace
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
 # Claude
 .claude
