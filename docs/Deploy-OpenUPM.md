@@ -17,7 +17,7 @@
    ./commands/bump-version.sh 1.0.1
    ```
 
-   On Windows: `./commands/bump-version.ps1 -NewVersion "1.0.1"`.
+   On Windows: `commands\bump-version.cmd -NewVersion "1.0.1"`.
 
    Add `--sync-docs to-package` (`-SyncDocs ToPackage`) to copy the root `README.md` and `CHANGELOG.md` into the package in the same step.
 
@@ -28,7 +28,7 @@
    ./commands/check-package.sh
    ```
 
-   On Windows: `./commands/check-package.ps1`.
+   On Windows: `commands\check-package.cmd`.
 
 4. Merge to `main`, then run the **release** workflow from the **Actions** tab.
 

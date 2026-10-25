@@ -27,7 +27,9 @@ Every script in `commands/` comes twice, with the same options:
 | Platform | Scripts | Requirements |
 |---|---|---|
 | macOS, Linux | `*.sh` | bash (the macOS 3.2 one is enough), git, perl; `check-package.sh` also needs one of jq, python3 or node |
-| Windows | `*.ps1` | [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) (`winget install Microsoft.PowerShell`), git |
+| Windows | `*.cmd`, running `*.ps1` | git; nothing else: the built-in Windows PowerShell 5.1 is enough (PowerShell 7 works too) |
+
+On Windows run the `.cmd` launcher from cmd or PowerShell. It starts the `.ps1` script of the same name with `-ExecutionPolicy Bypass` for that one process, so Windows' default execution policy does not block it and no system setting changes. If your execution policy already allows scripts, you can also run the `.ps1` directly.
 
 The examples below show the macOS / Linux command first and the Windows one below it.
 
@@ -37,8 +39,8 @@ The examples below show the macOS / Linux command first and the Windows one belo
 ./commands/init.sh --package-id com.company.cool-package --package-name "Cool Package" --github-repository User/cool-package --installer-extra-path Editor
 ```
 
-```powershell
-./commands/init.ps1 -PackageId "com.company.cool-package" -PackageName "Cool Package" -GitHubRepository "User/cool-package" -InstallerExtraPath "Editor"
+```bat
+commands\init.cmd -PackageId "com.company.cool-package" -PackageName "Cool Package" -GitHubRepository "User/cool-package" -InstallerExtraPath "Editor"
 ```
 
 | `.sh` option | `.ps1` parameter | Description |
@@ -81,8 +83,8 @@ Unity needs committed `.meta` files: a missing one drops the file from the `.uni
 ./commands/open-all-projects.sh
 ```
 
-```powershell
-./commands/open-all-projects.ps1
+```bat
+commands\open-all-projects.cmd
 ```
 
 This opens `Installer` and `Unity-Package`, each with the editor version in its `ProjectSettings/ProjectVersion.txt`, from the Unity Hub install folders (including a custom location set in Unity Hub). Options:
@@ -127,8 +129,8 @@ The test projects list the package under `testables`, so its tests run there wit
 ./commands/check-package.sh
 ```
 
-```powershell
-./commands/check-package.ps1
+```bat
+commands\check-package.cmd
 ```
 
 The script needs no Unity license and runs first in CI. It looks at tracked files and at new files git does not ignore, and checks that:
@@ -151,12 +153,12 @@ Each folder in `Unity-Tests/` is named after the Unity version it is tested with
 ./commands/test-project.sh --sync
 ```
 
-```powershell
-./commands/test-project.ps1 -List
-./commands/test-project.ps1 -Add 2023.2.22f1
-./commands/test-project.ps1 -Add 6000.0.58f2 -From 6000.3.1f1
-./commands/test-project.ps1 -Remove 2022.3.62f3
-./commands/test-project.ps1 -Sync
+```bat
+commands\test-project.cmd -List
+commands\test-project.cmd -Add 2023.2.22f1
+commands\test-project.cmd -Add 6000.0.58f2 -From 6000.3.1f1
+commands\test-project.cmd -Remove 2022.3.62f3
+commands\test-project.cmd -Sync
 ```
 
 `--add` copies the closest existing project (same major version first, without `Library/` and the lock file) and sets the new editor version. Open the new project once in that editor, let Unity upgrade it, and commit the result. Copying across major versions prints a warning: check `Packages/manifest.json` for packages that do not exist in the new version. `--sync` only rewrites the matrix, e.g. after renaming a folder by hand. The last test project cannot be removed, because the matrix cannot be empty.
@@ -195,8 +197,8 @@ To test another Unity version, use the [test project script](#test-projects).
 ./commands/bump-version.sh 1.0.1
 ```
 
-```powershell
-./commands/bump-version.ps1 -NewVersion "1.0.1"
+```bat
+commands\bump-version.cmd -NewVersion "1.0.1"
 ```
 
 Both accept prerelease versions (`1.1.0-preview.1`) and a preview mode (`--what-if` / `-WhatIf`). Add `--sync-docs to-package` / `-SyncDocs ToPackage` to copy the root `README.md` and `CHANGELOG.md` into the package first, or `to-root` / `ToRoot` for the other direction.
