@@ -1,174 +1,145 @@
-# [Unity Package Template](https://github.com/IvanMurzak/Unity-Package-Template)
+# Unity Package Starter Kit
 
-<img width="100%" alt="Stats" src="https://user-images.githubusercontent.com/9135028/198754538-4dd93fc6-7eb2-42ae-8ac6-d7361c39e6ef.gif"/>
+Template for Unity Package Manager packages: a package project, an installer, test projects for several Unity versions, and CI that tests, signs and releases the package to OpenUPM.
 
-Unity Editor supports NPM packages. It is way more flexible solution in comparison with classic Plugin that Unity is using for years. NPM package supports versioning and dependencies. You may update / downgrade any package very easily. Also, Unity Editor has UPM (Unity Package Manager) that makes the process even simpler.
+> [!NOTE]
+> This README describes the template. `commands/init.ps1` replaces it with the package README skeleton from `Unity-Package/Assets/root/README.md`.
 
-This template repository is designed to be easily updated into a real Unity package. Please follow the instruction bellow, it will help you to go through the entire process of package creation, distribution and installing.
+## Layout
 
-# Steps to make your package
+| Path | Purpose |
+|---|---|
+| `Unity-Package/Assets/root/` | The package itself. Everything outside this folder is not shipped. |
+| `Installer/` | Project that exports the installer `.unitypackage` (adds the OpenUPM registry and pins the version). |
+| `Unity-Tests/<version>/` | Empty projects that reference the package as a local, testable dependency, one per tested Unity version. |
+| `commands/` | Init, version bump, consistency check and "open all projects" scripts. |
+| `.github/workflows/` | Test matrix and release pipeline (`*.yml-sample` until init). |
+| `docs/` | Release and signing guides. |
 
-### 1️⃣ Click the button - create repository
+## Create a package
 
-[![create new repository](https://user-images.githubusercontent.com/9135028/198753285-3d3c9601-0711-43c7-a8f2-d40ec42393a2.png)](https://github.com/IvanMurzak/Unity-Package-Template/generate)
+### 1. Create the repository
 
-### 2️⃣ Clone your new repository
+Create a new repository from this template on GitHub and clone it.
 
-### 3️⃣ Initialize Project
+### 2. Initialize
 
-Use the initialization script to rename the package and replace all placeholders.
+Requires [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) (`pwsh`).
 
 ```powershell
-./commands/init.ps1 -PackageId "com.company.package" -PackageName "My Package"
+./commands/init.ps1 -PackageId "com.company.cool-package" -PackageName "Cool Package" -GitHubRepository "User/cool-package" -InstallerExtraPath "Editor"
 ```
 
-This script will:
-- Rename directories and files.
-- Replace `YOUR_PACKAGE_ID`, `YOUR_PACKAGE_NAME`, etc. in all files and folder names.
+| Parameter | Description |
+|---|---|
+| `-PackageId` | Reverse-domain package name, e.g. `com.company.cool-package`. |
+| `-PackageName` | Display name, e.g. `Cool Package`. |
+| `-GitHubRepository` | `owner/repo` slug, used for links, badges and release URLs. |
+| `-RootNamespace` | Optional C# root namespace. Defaults to `Company.CoolPackage`, derived from the id and name, because package ids may contain `-`. |
+| `-InstallerExtraPath` | Optional folder between `Assets/` and the installer folder, e.g. `Editor`. Prompted when omitted. |
 
-### 4️⃣ Update `package.json`
-Open `Unity-Package/Assets/root/package.json` and update:
-- `description`
-- `author`
-- `keywords`
-- `unity` (minimum supported Unity version)
+The script:
 
-### 5️⃣ Generate Meta Files
+- replaces every placeholder in file contents and in file and folder names,
+- enables `release.yml` and `test.yml`,
+- replaces this README with the package README.
 
-#### Using script
-   Open Unity project to generate `.meta` files.
-   **On Mac and Linux**:
-   ```bash
-   ./commands/open-all-projects-unix.sh
-   ```
-   **On Windows**:
-   ```bash
-   ./commands/open-all-projects-windows.ps1
-   ```
-#### OR Manually
-   You may open the projects manually to achieve the same result.
-   - Open Unity Hub.
-   - Add the `Installer` folder as a project.
-   - Add the `Unity-Package` folder as a project.
-   - Open both projects in Unity Editor. This will generate the necessary `.meta` files.
+| Placeholder | Example |
+|---|---|
+| `YOUR_PACKAGE_ID` / `YOUR_PACKAGE_ID_LOWERCASE` | `com.company.cool-package` |
+| `YOUR_PACKAGE_NAME` | `Cool Package` |
+| `YOUR_PACKAGE_NAME_PASCAL` | `CoolPackage` |
+| `YOUR_ROOT_NAMESPACE` | `Company.CoolPackage` |
+| `YOUR_PACKAGE_NAME_INSTALLER` | `Editor/Cool Package Installer` |
+| `YOUR_PACKAGE_NAME_INSTALLER_FILE` | `Cool-Package-Installer` |
+| `YOUR_GITHUB_USERNAME_REPOSITORY` | `User/cool-package` |
 
-### 6️⃣ Add files into `Unity-Package/Assets/root` folder
+### 3. Fill in `package.json`
 
-[Unity guidelines](https://docs.unity3d.com/Manual/cus-layout.html) about organizing files into the package root directory
+Open `Unity-Package/Assets/root/package.json` and set `description`, `keywords`, `unity` (minimum Unity version) and `dependencies`.
+
+If a dependency is hosted on OpenUPM, add its scope to `PackageIds` in `Installer/Assets/<installer>/Installer.Manifest.cs` and to the installer test fixtures.
+
+### 4. Generate `.meta` files
+
+Unity needs committed `.meta` files: a missing one drops the file from the `.unitypackage` and gives it a new GUID on every import. Open the projects once:
+
+```bash
+./commands/open-all-projects-unix.sh
+```
+
+On Windows run `./commands/open-all-projects-windows.ps1`. You can also add `Installer` and `Unity-Package` to Unity Hub and open them by hand.
+
+### 5. Write the package
+
+Follow the [Unity package layout](https://docs.unity3d.com/Manual/cus-layout.html):
 
 ```text
-  <root>
-  ├── package.json
-  ├── README.md
-  ├── CHANGELOG.md
-  ├── LICENSE.md
-  ├── Third Party Notices.md
-  ├── Editor
-  │   ├── [company-name].[package-name].Editor.asmdef
-  │   └── EditorExample.cs
-  ├── Runtime
-  │   ├── [company-name].[package-name].asmdef
-  │   └── RuntimeExample.cs
-  ├── Tests
-  │   ├── Editor
-  │   │   ├── [company-name].[package-name].Editor.Tests.asmdef
-  │   │   └── EditorExampleTest.cs
-  │   └── Runtime
-  │        ├── [company-name].[package-name].Tests.asmdef
-  │        └── RuntimeExampleTest.cs
-  ├── Samples~
-  │        ├── SampleFolder1
-  │        ├── SampleFolder2
-  │        └── ...
-  └── Documentation~
-       └── [package-name].md
+Unity-Package/Assets/root
+├── package.json
+├── README.md            identical copy of the root README.md
+├── CHANGELOG.md         identical copy of the root CHANGELOG.md
+├── LICENSE
+├── Editor
+│   └── YOUR_PACKAGE_ID.Editor.asmdef
+├── Runtime
+│   └── YOUR_PACKAGE_ID.Runtime.asmdef
+├── Tests
+│   ├── Editor
+│   │   └── YOUR_PACKAGE_ID.Editor.Tests.asmdef
+│   └── Runtime
+│       └── YOUR_PACKAGE_ID.Tests.asmdef
+├── Samples~
+└── Documentation~
 ```
 
-# Optional steps
+The test projects list the package under `testables`, so its tests run there without extra test assemblies.
 
-### 1. Version Management
+### 6. Check before committing
 
-To update the package version across all files (package.json, Installer.cs, etc.), use the bump version script:
+```bash
+bash commands/check-package.sh
+```
+
+The script needs no Unity license (only `git` and `jq`) and runs first in CI. It checks that:
+
+- every JSON, manifest and `.asmdef` file parses,
+- `package.json`, `Installer.cs` and both changelogs agree on the version,
+- the package copies of `README.md` and `CHANGELOG.md` match the root files,
+- every package asset has a `.meta` file, no `.meta` file is orphaned, and GUIDs are unique.
+
+## CI
+
+### Secrets
+
+Add them under **Settings > Secrets and variables > Actions**.
+
+| Name | Kind | Used for |
+|---|---|---|
+| `UNITY_EMAIL` | secret | Unity activation |
+| `UNITY_PASSWORD` | secret | Unity activation |
+| `UNITY_LICENSE` | secret | Contents of `Unity_lic.ulf` (Windows: `C:/ProgramData/Unity/Unity_lic.ulf`, macOS: `/Library/Application Support/Unity/Unity_lic.ulf`, Linux: `~/.local/share/unity3d/Unity/Unity_lic.ulf`) |
+| `UPM_ORG_ID` | secret | Package signing |
+| `UPM_SERVICE_ACCOUNT_KEY_ID` | secret | Package signing |
+| `UPM_SERVICE_ACCOUNT_KEY_SECRET` | secret | Package signing |
+| `UPM_INSTALL_SHA256` | variable | SHA-256 of the pinned UPM CLI install script |
+
+Signing is a hard gate: without the `UPM_*` values no release is created. [`docs/openupm-signing.md`](docs/openupm-signing.md) explains how to get them.
+
+### Workflows
+
+- **test** runs on pull requests to `main` and `dev` that touch the package, the test projects or the installer. The license-free checks run first; then the package tests run on every Unity version in `Unity-Tests/` in EditMode, PlayMode and Standalone, and the installer tests run in EditMode. Only the projects a PR touches are tested, and a new push cancels the previous run.
+- **release** runs only on demand (**Actions > release > Run workflow**). It fails if the version tag already exists, runs the full test matrix, builds the signed tarball and both `.unitypackage` files, attests them and publishes the tag and GitHub Release in one step.
+- **test-unity-plugin** is the reusable job that runs one Unity test mode for one project.
+
+Dependabot keeps the pinned action versions up to date.
+
+To test another Unity version, add a project to `Unity-Tests/`, then update the matrix in `test.yml` and the lists in the `open-all-projects` scripts.
+
+## Release
 
 ```powershell
-.\commands\bump-version.ps1 -NewVersion "1.0.1"
+./commands/bump-version.ps1 -NewVersion "1.0.1"
 ```
 
-### 2. Setup CI/CD
-
-To enable automatic testing and deployment:
-
-1.  **Configure GitHub Secrets**
-    Go to `Settings` > `Secrets and variables` > `Actions` > `New repository secret` and add:
-    -   `UNITY_EMAIL`: Your Unity account email.
-    -   `UNITY_PASSWORD`: Your Unity account password.
-    -   `UNITY_LICENSE`: Content of your `Unity_lic.ulf` file.
-        -   Windows: `C:/ProgramData/Unity/Unity_lic.ulf`
-        -   Mac: `/Library/Application Support/Unity/Unity_lic.ulf`
-        -   Linux: `~/.local/share/unity3d/Unity/Unity_lic.ulf`
-
-    **Package signing secrets (Unity 6.3+ signed packages)**
-
-    Starting with Unity 6.3, Package Manager warns about unsigned packages. The release workflow signs your package via Unity's UPM CLI, and **signing is a hard gate** — if these secrets are missing or misconfigured, the release fails and no GitHub Release is created. Add three more repository secrets (`Settings > Secrets and variables > Actions`):
-
-    -   `UPM_ORG_ID` — your Unity **organization ID**.
-    -   `UPM_SERVICE_ACCOUNT_KEY_ID` — a Unity Cloud **service-account key ID**.
-    -   `UPM_SERVICE_ACCOUNT_KEY_SECRET` — the matching **service-account key secret** (shown only once).
-
-    How to obtain them (in the [Unity Cloud Dashboard](https://cloud.unity.com/)):
-
-    1.  Pick the **organization** that will own/sign your package (Unity Cloud → Organizations → note its **Organization ID** → that's `UPM_ORG_ID`).
-    2.  **Administration → Service Accounts → Create service account.** In its **Keys** section, **Create key** → record the **Key ID** (`UPM_SERVICE_ACCOUNT_KEY_ID`) and **Secret key** (`UPM_SERVICE_ACCOUNT_KEY_SECRET`) — the secret is shown only once.
-    3.  Give the service account the **"Package Manager Package Signer"** role for that organization.
-
-    **Critical — three things must line up, or signing fails with "User does not have permission to sign package … with the provided credentials and organization":**
-
-    -   The **service account must belong to the same organization** as `UPM_ORG_ID`.
-    -   That **organization must be authorized to sign your package's namespace** (the reverse-domain name in `package.json`, e.g. `com.company.package`).
-    -   A brand-new org won't be authorized for a namespace until it **claims** it. To claim it, do a **one-time interactive sign in the Unity Editor**: Package Manager → select your package → Export → in the **Authoring Org** dropdown pick that organization → sign. After that one interactive sign, the CI service account can sign the same package automatically.
-
-    > Tip: the Unity UPM CLI can only *sign* a namespace the org already owns — it cannot *claim* one. The interactive Editor sign above is the only way to establish the association.
-
-    See [`docs/openupm-signing.md`](docs/openupm-signing.md) for the full setup, verification, and troubleshooting guide.
-
-2.  **Enable Workflows**
-    Rename the sample workflow files to enable them:
-    -   `.github/workflows/release.yml-sample` ➡️ `.github/workflows/release.yml`
-    -   `.github/workflows/test_pull_request.yml-sample` ➡️ `.github/workflows/test_pull_request.yml`
-
-3.  **Update Unity Version**
-    Open both `.yml` files and update the `UNITY_VERSION` (or similar variable) to match your project's Unity Editor version.
-
-4.  **Automatic Deployment**
-    The release workflow triggers automatically when you push to the `main` branch with an incremented version in `package.json`.
-
-# Final polishing
-
-- Update the `README.md` file (this file) with information about your package.
-- Copy the updated `README.md` to `Assets/root` as well.
-
-> ⚠️ Everything outside of the `root` folder won't be added to your package. But still could be used for testing or showcasing your package at your repository.
-
-### 1. Deploy to any registry you like
-
-- [Deploy to OpenUPM](https://github.com/IvanMurzak/Unity-Package-Template/blob/main/Docs/Deploy-OpenUPM.md) (recommended)
-- [Deploy using GitHub](https://github.com/IvanMurzak/Unity-Package-Template/blob/main/Docs/Deploy-GitHub.md)
-- [Deploy to npmjs.com](https://github.com/IvanMurzak/Unity-Package-Template/blob/main/Docs/Deploy-npmjs.md)
-
-### 2. Install your package into Unity Project
-
-When your package is distributed, you can install it into any Unity project.
-
-> Don't install into the same Unity project, please use another one.
-
-- [Install OpenUPM-CLI](https://github.com/openupm/openupm-cli#installation)
-- Open a command line at the root of Unity project (the folder which contains `Assets`)
-- Execute the command (for `OpenUPM` hosted package)
-
-  ```bash
-  openupm add YOUR_PACKAGE_NAME
-  ```
-
-# Final view in Unity Package Manager
-
-![image](https://user-images.githubusercontent.com/9135028/198777922-fdb71949-aee7-49c8-800f-7db885de9453.png)
+Then add the changelog entry, merge and run the release workflow. See [`docs/Deploy-OpenUPM.md`](docs/Deploy-OpenUPM.md) for the full checklist and the one-time OpenUPM setup.
