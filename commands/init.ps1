@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-#Requires -Version 7.0
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Initializes the Unity Package project by replacing placeholders.
@@ -47,7 +47,7 @@
     ./commands/init.ps1 -PackageId "com.mycompany.cool-package" -PackageName "Cool Package" -GitHubRepository "myusername/cool-package" -InstallerExtraPath "Editor"
 
 .NOTES
-    Windows script; requires PowerShell 7+ (pwsh). On macOS and Linux use
+    Windows script; runs on the built-in Windows PowerShell 5.1 or on PowerShell 7. On macOS and Linux use
     the .sh script of the same name. Run it once, on a
     fresh copy of the template.
 #>
@@ -76,7 +76,7 @@ trap { Write-Host "error: $($_.Exception.Message)" -ForegroundColor Red; exit 1 
 
 # Refuse to run twice: the second run would find no placeholders and only overwrite README.md.
 $PackageJson = Join-Path $RepoRoot "Unity-Package/Assets/root/package.json"
-if (-not (Get-Content -Path $PackageJson -Raw).Contains("YOUR_PACKAGE_ID")) {
+if (-not (Read-AllText $PackageJson).Contains("YOUR_PACKAGE_ID")) {
     throw "The template is already initialized: $PackageJson has no placeholders left."
 }
 
@@ -242,7 +242,7 @@ foreach ($File in Get-AllTargetItems | Where-Object { -not $_.PSIsContainer }) {
     $NewText = Edit-Placeholders $Content.Text $Replacements
     if ($NewText -cne $Content.Text) {
         Write-TextFile -Path $File.FullName -Text $NewText -HasBom $Content.HasBom
-        Write-Host "  Updated: $([System.IO.Path]::GetRelativePath($RepoRoot, $File.FullName))" -ForegroundColor Gray
+        Write-Host "  Updated: $((Get-RelativePath $File.FullName))" -ForegroundColor Gray
     }
 }
 
@@ -297,6 +297,6 @@ Write-Host "Done!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  1. Fill in description, keywords and unity in Unity-Package/Assets/root/package.json."
-Write-Host "  2. Open every project once to generate .meta files: ./commands/open-all-projects.ps1"
-Write-Host "  3. Run ./commands/check-package.ps1 and commit."
+Write-Host "  2. Open every project once to generate .meta files: commands\open-all-projects.cmd"
+Write-Host "  3. Run commands\check-package.cmd and commit."
 Write-Host "  4. Add the CI secrets (UNITY_*, UPM_*), see docs/openupm-signing.md."

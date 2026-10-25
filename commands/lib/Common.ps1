@@ -1,9 +1,36 @@
-# Helpers shared by the scripts in commands/. Dot-source it:
+# Helpers shared by the .ps1 scripts in commands/. Dot-source it:
 #   . (Join-Path $PSScriptRoot "lib/Common.ps1")
+#
+# Everything here and in the scripts runs on the Windows PowerShell 5.1 that ships with
+# Windows (.NET Framework) as well as on PowerShell 7. Keep the .ps1 files ASCII-only:
+# Windows PowerShell reads script files without a BOM in the ANSI code page.
 
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $UnityTestsDir = Join-Path $RepoRoot "Unity-Tests"
 $WorkflowsDir = Join-Path $RepoRoot ".github/workflows"
+
+# $IsWindows only exists in PowerShell 6+; Windows PowerShell (Desktop edition) is always Windows.
+$OnWindows = ($PSVersionTable.PSEdition -ne "Core") -or $IsWindows
+$OnMacOS = (-not $OnWindows) -and $IsMacOS
+
+# Reads a whole file as UTF-8 (BOM-aware). Get-Content -Raw would use the ANSI code page
+# on Windows PowerShell and break non-ASCII text.
+function Read-AllText {
+    param([string]$Path)
+    return [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+}
+
+# Path relative to the repository root, with forward slashes.
+# [System.IO.Path]::GetRelativePath does not exist on .NET Framework.
+function Get-RelativePath {
+    param([string]$Path)
+    $Full = [System.IO.Path]::GetFullPath($Path)
+    $Root = [System.IO.Path]::GetFullPath($RepoRoot).TrimEnd('\', '/')
+    if ($Full.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase) -and $Full.Length -gt $Root.Length) {
+        $Full = $Full.Substring($Root.Length + 1)
+    }
+    return $Full.Replace('\', '/')
+}
 
 # Unity editor version, e.g. "2022.3.62f3" or "6000.3.1f1".
 $UnityVersionPattern = '^(\d+)\.(\d+)\.(\d+)([abfpx])(\d+)$'
@@ -65,7 +92,7 @@ function Get-ProjectUnityVersion {
     if (-not (Test-Path $VersionFile)) {
         return $null
     }
-    $Content = Get-Content -Path $VersionFile -Raw
+    $Content = Read-AllText $VersionFile
     if ($Content -match 'm_EditorVersion:\s*(\S+)') {
         return $Matches[1]
     }
@@ -88,7 +115,7 @@ $MatrixPattern = '(?m)^(\s*unityVersion:\s*)\[([^\]]*)\]'
 
 function Get-WorkflowUnityVersions {
     param([string]$WorkflowPath)
-    $Content = Get-Content -Path $WorkflowPath -Raw
+    $Content = Read-AllText $WorkflowPath
     $Found = [regex]::Matches($Content, $MatrixPattern)
     if ($Found.Count -ne 1) {
         throw "Expected exactly one 'unityVersion: [...]' matrix in $WorkflowPath, found $($Found.Count)."
@@ -110,11 +137,20 @@ function Set-WorkflowUnityVersions {
 }
 
 # Files git would consider part of the repository: tracked plus untracked but not ignored.
+# One relative path per entry, with forward slashes.
 function Get-RepositoryFiles {
     param([string[]]$PathSpec)
-    $Output = & git -C $RepoRoot ls-files -z --cached --others --exclude-standard -- @PathSpec
+    # git prints UTF-8; Windows PowerShell decodes native output with the console code page.
+    $PreviousEncoding = [Console]::OutputEncoding
+    try {
+        try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+        $Output = & git -C $RepoRoot -c core.quotePath=false ls-files --cached --others --exclude-standard -- @PathSpec
+    }
+    finally {
+        try { [Console]::OutputEncoding = $PreviousEncoding } catch { }
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "git ls-files failed. Run the script inside the repository."
     }
-    return @(($Output -join '') -split "`0" | Where-Object { $_ } | Sort-Object -Unique)
+    return @($Output | Where-Object { $_ } | Sort-Object -Unique -CaseSensitive)
 }

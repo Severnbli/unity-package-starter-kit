@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-#Requires -Version 7.0
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Adds or removes a Unity test project and keeps the test workflow in sync.
@@ -42,7 +42,7 @@
     ./commands/test-project.ps1 -List
 
 .NOTES
-    Windows script; requires PowerShell 7+ (pwsh) and git. On macOS and Linux use
+    Windows script; runs on the built-in Windows PowerShell 5.1 or on PowerShell 7, needs git. On macOS and Linux use
     the .sh script of the same name.
 #>
 
@@ -78,10 +78,10 @@ function Show-Projects {
     $Workflow = Get-TestWorkflowPath
     if ($Workflow) {
         $Matrix = Get-WorkflowUnityVersions $Workflow
-        $WorkflowName = [System.IO.Path]::GetRelativePath($RepoRoot, $Workflow)
+        $WorkflowName = (Get-RelativePath $Workflow)
         Write-Host "Tested by $($WorkflowName): $($Matrix -join ', ')" -ForegroundColor Cyan
         if (($Projects -join ',') -cne ($Matrix -join ',')) {
-            Write-Warning "The workflow is out of sync. Run ./commands/test-project.ps1 -Sync"
+            Write-Warning "The workflow is out of sync. Run commands\test-project.cmd -Sync"
         }
     }
 }
@@ -96,7 +96,7 @@ function Sync-Workflow {
     if ($Projects.Count -eq 0) {
         throw "Unity-Tests/ has no projects; the workflow matrix cannot be empty."
     }
-    $WorkflowName = [System.IO.Path]::GetRelativePath($RepoRoot, $Workflow)
+    $WorkflowName = (Get-RelativePath $Workflow)
     if (Set-WorkflowUnityVersions -WorkflowPath $Workflow -Versions $Projects) {
         Write-Host "Updated $($WorkflowName): unityVersion: [$($Projects -join ', ')]" -ForegroundColor Green
     }

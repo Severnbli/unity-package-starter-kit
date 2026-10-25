@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-#Requires -Version 7.0
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Fast consistency checks that need no Unity license.
@@ -18,7 +18,7 @@
     ./commands/check-package.ps1
 
 .NOTES
-    Windows script; requires PowerShell 7+ (pwsh) and git. On macOS and Linux use
+    Windows script; runs on the built-in Windows PowerShell 5.1 or on PowerShell 7, needs git. On macOS and Linux use
     the .sh script of the same name.
 #>
 
@@ -48,34 +48,42 @@ function Get-RepoPath {
 
 $Files = @(Get-RepositoryFiles | Where-Object { Test-Path -LiteralPath (Get-RepoPath $_) })
 
-# 1. Every JSON-based file must parse (manifests, asmdefs, fixtures). System.Text.Json is
-#    strict: no comments, no trailing commas. VS Code settings are JSONC, so they are skipped.
+# 1. Every JSON-based file must parse (manifests, asmdefs, fixtures). VS Code settings are
+#    JSONC, so they are skipped. PowerShell 7 has the strict System.Text.Json parser (no
+#    comments, no trailing commas); Windows PowerShell falls back to ConvertFrom-Json.
+$JsonDocument = "System.Text.Json.JsonDocument" -as [type]
 foreach ($File in $Files | Where-Object { $_ -match '\.(json|asmdef|asmref)$' -and $_ -notmatch '(^|/)\.vscode/' }) {
+    $Json = Read-AllText (Get-RepoPath $File)
     try {
-        $Document = [System.Text.Json.JsonDocument]::Parse([System.IO.File]::ReadAllText((Get-RepoPath $File)))
-        $Document.Dispose()
+        if ($JsonDocument) {
+            $JsonDocument::Parse($Json).Dispose()
+        }
+        else {
+            $null = $Json | ConvertFrom-Json
+        }
     }
     catch {
-        Fail "Invalid JSON: $File ($($_.Exception.InnerException.Message ?? $_.Exception.Message))"
+        $Reason = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
+        Fail "Invalid JSON: $File ($Reason)"
     }
 }
 
 # 2. The installer, changelog and package must agree on the version.
-$Version = (Get-Content -Path (Get-RepoPath "$PackageDir/package.json") -Raw | ConvertFrom-Json).version
+$Version = (Read-AllText (Get-RepoPath "$PackageDir/package.json") | ConvertFrom-Json).version
 $InstallerFiles = @($Files | Where-Object { $_ -like "Installer/Assets/*" -and (Split-Path $_ -Leaf) -eq "Installer.cs" })
 if ($InstallerFiles.Count -ne 1) {
     Fail "Expected one Installer.cs under Installer/Assets, found $($InstallerFiles.Count)"
 }
 else {
-    $InstallerText = Get-Content -Path (Get-RepoPath $InstallerFiles[0]) -Raw
+    $InstallerText = Read-AllText (Get-RepoPath $InstallerFiles[0])
     $InstallerVersion = if ($InstallerText -match 'public const string Version = "([^"]*)"') { $Matches[1] } else { "" }
     if ($InstallerVersion -cne $Version) {
-        Fail "Installer.Version is '$InstallerVersion' but package.json is '$Version' (run commands/bump-version.ps1)"
+        Fail "Installer.Version is '$InstallerVersion' but package.json is '$Version' (run commands\bump-version.cmd)"
     }
 }
 foreach ($Changelog in @("CHANGELOG.md", "$PackageDir/CHANGELOG.md")) {
     $Heading = '(?m)^## \[' + [regex]::Escape($Version) + '\]'
-    if ((Get-Content -Path (Get-RepoPath $Changelog) -Raw) -cnotmatch $Heading) {
+    if ((Read-AllText (Get-RepoPath $Changelog)) -cnotmatch $Heading) {
         Fail "$Changelog has no '## [$Version]' entry"
     }
 }
@@ -83,9 +91,9 @@ foreach ($Changelog in @("CHANGELOG.md", "$PackageDir/CHANGELOG.md")) {
 # 3. The package ships its own copies of the README and changelog (Package Manager shows
 #    them); they must not drift from the repository root.
 foreach ($Doc in @("README.md", "CHANGELOG.md")) {
-    $Root = [System.IO.File]::ReadAllBytes((Get-RepoPath $Doc))
-    $Copy = [System.IO.File]::ReadAllBytes((Get-RepoPath "$PackageDir/$Doc"))
-    if (-not [System.Linq.Enumerable]::SequenceEqual($Root, $Copy)) {
+    $Root = (Get-FileHash -LiteralPath (Get-RepoPath $Doc) -Algorithm SHA256).Hash
+    $Copy = (Get-FileHash -LiteralPath (Get-RepoPath "$PackageDir/$Doc") -Algorithm SHA256).Hash
+    if ($Root -ne $Copy) {
         Fail "$PackageDir/$Doc differs from $Doc (copy the root file over it)"
     }
 }
@@ -123,7 +131,7 @@ foreach ($Orphan in $Metas | Where-Object { -not $Assets.Contains($_) }) {
 $Guids = @{}
 foreach ($Meta in $Metas) {
     $MetaPath = "$PackageDir/$Meta.meta"
-    $Text = Get-Content -Path (Get-RepoPath $MetaPath) -Raw
+    $Text = Read-AllText (Get-RepoPath $MetaPath)
     if ($Text -notmatch '(?m)^guid:\s*([0-9a-f]{32})') {
         Fail "No GUID in $MetaPath"
         continue
@@ -143,8 +151,8 @@ if ($Workflow) {
     $Projects = Get-UnityTestProjects
     $Matrix = Get-WorkflowUnityVersions $Workflow
     if (($Projects -join ',') -cne ($Matrix -join ',')) {
-        $WorkflowName = [System.IO.Path]::GetRelativePath($RepoRoot, $Workflow)
-        Fail "$WorkflowName tests [$($Matrix -join ', ')] but Unity-Tests/ has [$($Projects -join ', ')] (run commands/test-project.ps1 -Sync)"
+        $WorkflowName = (Get-RelativePath $Workflow)
+        Fail "$WorkflowName tests [$($Matrix -join ', ')] but Unity-Tests/ has [$($Projects -join ', ')] (run commands\test-project.cmd -Sync)"
     }
 }
 

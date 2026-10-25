@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-#Requires -Version 7.0
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Opens all Unity projects in the repository using Unity Editor.
@@ -36,7 +36,7 @@
     ./commands/open-all-projects.ps1 -Projects Unity-Package -WhatIf
 
 .NOTES
-    Windows script; requires PowerShell 7+ (pwsh). On macOS and Linux use
+    Windows script; runs on the built-in Windows PowerShell 5.1 or on PowerShell 7. On macOS and Linux use
     the .sh script of the same name.
 #>
 
@@ -59,8 +59,8 @@ trap { Write-Host "error: $($_.Exception.Message)" -ForegroundColor Red; exit 1 
 
 # Unity Hub stores a custom install location in secondaryInstallPath.json.
 function Get-HubConfigDirectory {
-    if ($IsWindows) { return Join-Path $env:APPDATA "UnityHub" }
-    if ($IsMacOS) { return Join-Path $HOME "Library/Application Support/UnityHub" }
+    if ($OnWindows) { return Join-Path $env:APPDATA "UnityHub" }
+    if ($OnMacOS) { return Join-Path $HOME "Library/Application Support/UnityHub" }
     return Join-Path $HOME ".config/UnityHub"
 }
 
@@ -71,12 +71,12 @@ function Get-EditorRoots {
     }
     $HubConfig = Join-Path (Get-HubConfigDirectory) "secondaryInstallPath.json"
     if (Test-Path $HubConfig) {
-        $Custom = Get-Content -Path $HubConfig -Raw | ConvertFrom-Json
+        $Custom = Read-AllText $HubConfig | ConvertFrom-Json
         if ($Custom) {
             $Roots += [string]$Custom
         }
     }
-    if ($IsWindows) {
+    if ($OnWindows) {
         $Roots += @(
             (Join-Path $env:ProgramFiles "Unity/Hub/Editor"),
             "D:/Program Files/Unity/Hub/Editor",
@@ -84,7 +84,7 @@ function Get-EditorRoots {
             "C:/Unity/Hub/Editor"
         )
     }
-    elseif ($IsMacOS) {
+    elseif ($OnMacOS) {
         $Roots += @("/Applications/Unity/Hub/Editor", (Join-Path $HOME "Applications/Unity/Hub/Editor"))
     }
     else {
@@ -95,11 +95,11 @@ function Get-EditorRoots {
 
 function Get-UnityExecutable {
     param([string[]]$Roots, [string]$Version)
-    $Relative = if ($IsWindows) { "Editor/Unity.exe" }
-    elseif ($IsMacOS) { "Unity.app/Contents/MacOS/Unity" }
+    $Relative = if ($OnWindows) { "Editor/Unity.exe" }
+    elseif ($OnMacOS) { "Unity.app/Contents/MacOS/Unity" }
     else { "Editor/Unity" }
     foreach ($Root in $Roots) {
-        $Candidate = Join-Path $Root $Version $Relative
+        $Candidate = Join-Path (Join-Path $Root $Version) $Relative
         if (Test-Path $Candidate) {
             return $Candidate
         }
