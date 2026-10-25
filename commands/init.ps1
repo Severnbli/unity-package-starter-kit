@@ -9,15 +9,26 @@
     - YOUR_PACKAGE_ID
     - YOUR_PACKAGE_ID_LOWERCASE
     - YOUR_PACKAGE_NAME
+    - YOUR_PACKAGE_NAME_PASCAL
     - YOUR_PACKAGE_NAME_INSTALLER
     - YOUR_PACKAGE_NAME_INSTALLER_FILE
+    - YOUR_ROOT_NAMESPACE
     - YOUR_GITHUB_USERNAME_REPOSITORY
+
+    Afterwards it enables the sample workflows and replaces the template README
+    with the package README.
 
 .PARAMETER PackageId
     The package ID (e.g., "com.company.package").
 
 .PARAMETER PackageName
     The package name (e.g., "My Package").
+
+.PARAMETER RootNamespace
+    Optional. The C# root namespace (e.g., "Company.CoolPackage").
+    Package IDs may contain characters that are not valid in a namespace, so it is
+    derived from them by default: "com.mycompany.cool-package" with the name
+    "Cool Package" becomes "Mycompany.CoolPackage".
 
 .PARAMETER InstallerExtraPath
     Optional. An extra path segment between Assets/ and the Installer folder.
@@ -46,6 +57,9 @@ param(
     [string]$PackageName,
 
     [Parameter(Mandatory = $false)]
+    [string]$RootNamespace,
+
+    [Parameter(Mandatory = $false)]
     [string]$InstallerExtraPath,
 
     [Parameter(Mandatory = $true)]
@@ -69,6 +83,24 @@ if (-not [string]::IsNullOrWhiteSpace($InstallerExtraPath)) {
 # Derived variables
 $PackageIdLowercase = $PackageId.ToLower()
 
+# "Cool Package" -> "CoolPackage", "cool-package" -> "CoolPackage"
+function ConvertTo-PascalCase {
+    param([string]$Text)
+    $Words = $Text -split '[^A-Za-z0-9]+' | Where-Object { $_ }
+    return ($Words | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }) -join ''
+}
+
+$PackageNamePascal = ConvertTo-PascalCase $PackageName
+if ([string]::IsNullOrWhiteSpace($RootNamespace)) {
+    # Skip the reverse-domain prefix ("com", "org", ...) and use the company segment.
+    $IdSegments = $PackageIdLowercase -split '\.'
+    $Company = if ($IdSegments.Count -ge 3) { ConvertTo-PascalCase $IdSegments[1] } else { "" }
+    $RootNamespace = (@($Company, $PackageNamePascal) | Where-Object { $_ }) -join '.'
+}
+if ($RootNamespace -notmatch '^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$') {
+    throw "Invalid root namespace '$RootNamespace'. Pass a valid C# namespace with -RootNamespace."
+}
+
 # Compute base installer name and file name first
 $PackageNameInstallerBase = "$PackageName Installer"
 $PackageNameInstallerFile = $PackageNameInstallerBase -replace ' ', '-'  # Stays unchanged (no path prefix)
@@ -86,6 +118,8 @@ $Replacements = @{
     "YOUR_PACKAGE_ID"                  = $PackageId
     "YOUR_PACKAGE_ID_LOWERCASE"        = $PackageIdLowercase
     "YOUR_PACKAGE_NAME"                = $PackageName
+    "YOUR_PACKAGE_NAME_PASCAL"         = $PackageNamePascal
+    "YOUR_ROOT_NAMESPACE"              = $RootNamespace
     "YOUR_PACKAGE_NAME_INSTALLER_FILE" = $PackageNameInstallerFile
     "YOUR_PACKAGE_NAME_INSTALLER"      = $PackageNameInstaller
     "YOUR_GITHUB_USERNAME_REPOSITORY"  = $GitHubRepository
@@ -96,6 +130,8 @@ $ReplacementsForRenaming = @{
     "YOUR_PACKAGE_ID"                  = $PackageId
     "YOUR_PACKAGE_ID_LOWERCASE"        = $PackageIdLowercase
     "YOUR_PACKAGE_NAME"                = $PackageName
+    "YOUR_PACKAGE_NAME_PASCAL"         = $PackageNamePascal
+    "YOUR_ROOT_NAMESPACE"              = $RootNamespace
     "YOUR_PACKAGE_NAME_INSTALLER_FILE" = $PackageNameInstallerFile
     "YOUR_PACKAGE_NAME_INSTALLER"      = $PackageNameInstallerBase
     "YOUR_GITHUB_USERNAME_REPOSITORY"  = $GitHubRepository
@@ -111,6 +147,7 @@ $RepoRoot = Split-Path -Parent $ScriptDir
 Write-Host "Initializing package with:" -ForegroundColor Cyan
 Write-Host "  ID: $PackageId"
 Write-Host "  Name: $PackageName"
+Write-Host "  Root Namespace: $RootNamespace"
 Write-Host "  Installer: $PackageNameInstaller"
 Write-Host "  Installer File: $PackageNameInstallerFile"
 Write-Host "  GitHub Repository: $GitHubRepository"
@@ -126,6 +163,7 @@ Write-Host ""
 # Ignore patterns are relative to the target path and support wildcards (*) for single directory level
 $TargetPaths = @(
     @{ Path = "commands/bump-version.ps1" },
+    @{ Path = "commands/check-package.sh" },
     @{
         Path   = "Installer"
         Ignore = @(
@@ -154,6 +192,8 @@ $TargetPaths = @(
         )
     },
     @{ Path = "README.md" },
+    @{ Path = "CHANGELOG.md" },
+    @{ Path = "docs" },
     @{ Path = ".github" }
 )
 
@@ -307,4 +347,26 @@ foreach ($Item in $Items) {
     }
 }
 
+# 3. Enable the sample workflows
+Write-Host "Enabling workflows..." -ForegroundColor Yellow
+$WorkflowsDir = Join-Path $RepoRoot ".github/workflows"
+foreach ($Sample in Get-ChildItem -Path $WorkflowsDir -Filter "*.yml-sample" -File) {
+    $Enabled = $Sample.Name -replace '\.yml-sample$', '.yml'
+    Move-Item -Path $Sample.FullName -Destination (Join-Path $WorkflowsDir $Enabled) -Force
+    Write-Host "  Enabled: $Enabled" -ForegroundColor Gray
+}
+
+# 4. The template README is no longer needed: the package README replaces it.
+#    Both copies must stay identical (commands/check-package.sh checks it).
+Write-Host "Replacing README.md with the package README..." -ForegroundColor Yellow
+Copy-Item -Path (Join-Path $RepoRoot "Unity-Package/Assets/root/README.md") -Destination (Join-Path $RepoRoot "README.md") -Force
+
 Write-Host "Done!" -ForegroundColor Green
+Write-Host ""
+Write-Host "Next steps:" -ForegroundColor Cyan
+Write-Host "  1. Fill in description, keywords and unity in Unity-Package/Assets/root/package.json."
+Write-Host "  2. Open the Installer and Unity-Package projects once to generate .meta files"
+Write-Host "     (commands/open-all-projects-unix.sh or commands/open-all-projects-windows.ps1)."
+Write-Host "  3. Run 'bash commands/check-package.sh' and commit."
+Write-Host "  4. Add the CI secrets (UNITY_*, UPM_*), see docs/openupm-signing.md."
+
