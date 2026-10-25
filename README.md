@@ -1,27 +1,30 @@
+<div align="center">
+
 # Unity Package Starter Kit
 
-Template for Unity Package Manager packages: a package project, an installer, test projects for several Unity versions, and CI that tests, signs and releases the package to OpenUPM.
+**Template for Unity Package Manager packages**<br>
+A package project, an installer, test projects for several Unity versions,<br>
+and CI that tests, signs and releases the package to OpenUPM.
+
+[![Use this template](https://img.shields.io/badge/Use_this_template-2ea44f?style=for-the-badge&logo=github)](https://github.com/Severnbli/unity-package-starter-kit/generate)
+
+[![Unity 2021.3+](https://img.shields.io/badge/Unity-2021.3%2B-000000?logo=unity)](https://unity.com/)
+[![OpenUPM](https://img.shields.io/badge/OpenUPM-signed_releases-3367d6)](https://openupm.com/)
+[![Platforms](https://img.shields.io/badge/scripts-macOS_%7C_Linux_%7C_Windows-informational)](#scripts)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+[Layout](#layout) •
+[Scripts](#scripts) •
+[Create a package](#create-a-package) •
+[Test projects](#test-projects) •
+[CI](#ci) •
+[Release](#release) •
+[Differences from upstream](#differences-from-the-upstream-template)
+
+</div>
 
 > [!NOTE]
 > This README describes the template. The init script replaces it with the package README skeleton from `Unity-Package/Assets/root/README.md`.
-
-## Contents
-
-- [Layout](#layout)
-- [Scripts](#scripts)
-- [Create a package](#create-a-package)
-  1. [Create the repository](#1-create-the-repository)
-  2. [Initialize](#2-initialize)
-  3. [Fill in `package.json`](#3-fill-in-packagejson)
-  4. [Generate `.meta` files](#4-generate-meta-files)
-  5. [Write the package](#5-write-the-package)
-  6. [Check before committing](#6-check-before-committing)
-- [Test projects](#test-projects)
-- [CI](#ci)
-  - [Secrets](#secrets)
-  - [Workflows](#workflows)
-- [Release](#release)
-- [Differences from the upstream template](#differences-from-the-upstream-template)
 
 ## Layout
 
@@ -34,6 +37,8 @@ Template for Unity Package Manager packages: a package project, an installer, te
 | `.github/workflows/` | Test matrix and release pipeline (`*.yml-sample` until init). |
 | `docs/` | Release and signing guides. |
 
+---
+
 ## Scripts
 
 Every script in `commands/` comes in two flavours with the same options:
@@ -43,9 +48,12 @@ Every script in `commands/` comes in two flavours with the same options:
 | macOS, Linux | `*.sh` | bash (the macOS 3.2 one is enough), git, perl; `check-package.sh` also needs jq, python3 or node |
 | Windows | `*.cmd` (runs the `*.ps1`) | git; the built-in Windows PowerShell 5.1 is enough, PowerShell 7 works too |
 
-The `.cmd` launcher works from cmd and PowerShell. It runs the `.ps1` of the same name with `-ExecutionPolicy Bypass` for that one process, so the default execution policy does not block it and no system setting changes. If your policy already allows scripts, run the `.ps1` directly.
+> [!TIP]
+> The `.cmd` launcher works from cmd and PowerShell. It runs the `.ps1` of the same name with `-ExecutionPolicy Bypass` for that one process, so the default execution policy does not block it and no system setting changes. If your policy already allows scripts, run the `.ps1` directly.
 
 Examples below show the macOS / Linux command first, then the Windows one.
+
+---
 
 ## Create a package
 
@@ -73,6 +81,9 @@ commands\init.cmd -PackageId "com.company.cool-package" -PackageName "Cool Packa
 
 The script replaces every placeholder in file contents and in file and folder names, enables `release.yml` and `test.yml`, and replaces this README with the package README. It refuses to run on an already initialized copy and never touches Unity's generated folders (`Library/`, `Temp/`, ...).
 
+<details>
+<summary>Placeholders</summary>
+
 | Placeholder | Example |
 |---|---|
 | `YOUR_PACKAGE_ID` / `YOUR_PACKAGE_ID_LOWERCASE` | `com.company.cool-package` |
@@ -83,15 +94,21 @@ The script replaces every placeholder in file contents and in file and folder na
 | `YOUR_PACKAGE_NAME_INSTALLER_FILE` | `Cool-Package-Installer` |
 | `YOUR_GITHUB_USERNAME_REPOSITORY` | `User/cool-package` |
 
+</details>
+
 ### 3. Fill in `package.json`
 
 In `Unity-Package/Assets/root/package.json`, set `description`, `keywords`, `unity` (minimum Unity version) and `dependencies`.
 
-For a dependency hosted on OpenUPM, also add its scope to `PackageIds` in `Installer/Assets/<installer>/Installer.Manifest.cs` and to the installer test fixtures.
+> [!TIP]
+> For a dependency hosted on OpenUPM, also add its scope to `PackageIds` in `Installer/Assets/<installer>/Installer.Manifest.cs` and to the installer test fixtures.
 
 ### 4. Generate `.meta` files
 
-Unity needs committed `.meta` files: without one, a file is left out of the `.unitypackage` and gets a new GUID on every import. Open the projects once:
+> [!WARNING]
+> Unity needs committed `.meta` files: without one, a file is left out of the `.unitypackage` and gets a new GUID on every import.
+
+Open the projects once:
 
 ```bash
 ./commands/open-all-projects.sh
@@ -103,12 +120,17 @@ commands\open-all-projects.cmd
 
 This opens `Installer` and `Unity-Package`, each in the editor version from its `ProjectSettings/ProjectVersion.txt`, found in the Unity Hub install folders (including a custom location set in Unity Hub).
 
+<details>
+<summary>Options</summary>
+
 | `.sh` option | `.ps1` parameter | Description |
 |---|---|---|
 | `--with-tests` | `-WithTests` | Also open every test project in `Unity-Tests/`. |
 | `--editors-path <dir>` | `-EditorsPath <dir>` | Look for editors in another folder first. |
 | `--what-if` | `-WhatIf` | Print what would be opened. |
 | `<project> ...` | `-Projects <project>,...` | Open only these projects, e.g. `Unity-Package`. |
+
+</details>
 
 Adding the projects to Unity Hub and opening them by hand works too.
 
@@ -155,6 +177,8 @@ The check needs no Unity license and runs first in CI. Over tracked files and ne
 - every package asset has a `.meta` file, no `.meta` file is orphaned, and GUIDs are unique,
 - the test workflow matrix lists exactly the projects in `Unity-Tests/`.
 
+---
+
 ## Test projects
 
 Each folder in `Unity-Tests/` is named after the Unity version it is tested with. The test project script adds and removes them and rewrites the `unityVersion` matrix in `test.yml` (`test.yml-sample` before init):
@@ -179,6 +203,8 @@ commands\test-project.cmd -Sync
 - `--sync` only rewrites the matrix, e.g. after renaming a folder by hand.
 - The last test project cannot be removed, because the matrix cannot be empty.
 
+---
+
 ## CI
 
 ### Secrets
@@ -194,7 +220,8 @@ Add them under **Settings > Secrets and variables > Actions**.
 | `UPM_SERVICE_ACCOUNT_KEY_ID` | Package signing |
 | `UPM_SERVICE_ACCOUNT_KEY_SECRET` | Package signing |
 
-Signing is a hard gate: without the `UPM_*` secrets no release is created. [`docs/openupm-signing.md`](docs/openupm-signing.md) explains how to get them.
+> [!IMPORTANT]
+> Signing is a hard gate: without the `UPM_*` secrets no release is created. [`docs/openupm-signing.md`](docs/openupm-signing.md) explains how to get them.
 
 ### Workflows
 
@@ -203,6 +230,8 @@ Signing is a hard gate: without the `UPM_*` secrets no release is created. [`doc
 | **test** | On pull requests to `main` and `dev` that touch the package, the test projects or the installer | License-free checks first, then the package tests on every version in `Unity-Tests/` in EditMode, PlayMode and Standalone, and the installer tests in EditMode. Only the projects a PR touches are tested; a new push cancels the previous run. |
 | **release** | On demand (**Actions > release > Run workflow**) | Fails if the version tag already exists, runs the full test matrix, builds the signed tarball and both `.unitypackage` files, attests them, and publishes the tag and GitHub Release in one step. |
 | **test-unity-plugin** | Called by the two above | Runs one Unity test mode for one project. |
+
+---
 
 ## Release
 
@@ -221,6 +250,8 @@ Signing is a hard gate: without the `UPM_*` secrets no release is created. [`doc
 3. Merge, then run the release workflow.
 
 [`docs/Deploy-OpenUPM.md`](docs/Deploy-OpenUPM.md) has the full checklist and the one-time OpenUPM setup.
+
+---
 
 ## Differences from the upstream template
 
