@@ -1,6 +1,6 @@
 {
     "name": "YOUR_PACKAGE_ID.Installer",
-    "rootNamespace": "YOUR_PACKAGE_ID.Installer",
+    "rootNamespace": "YOUR_ROOT_NAMESPACE.Installer",
     "references": [],
     "includePlatforms": [
         "Editor"

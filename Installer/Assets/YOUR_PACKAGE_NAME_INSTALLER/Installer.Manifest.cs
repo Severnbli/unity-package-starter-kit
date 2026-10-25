@@ -11,11 +11,11 @@
 using System.IO;
 using System.Linq;
 using UnityEngine;
-using YOUR_PACKAGE_ID.Installer.SimpleJSON;
+using YOUR_ROOT_NAMESPACE.Installer.SimpleJSON;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("YOUR_PACKAGE_ID.Installer.Tests")]
-namespace YOUR_PACKAGE_ID.Installer
+namespace YOUR_ROOT_NAMESPACE.Installer
 {
     public static partial class Installer
     {
@@ -31,13 +31,10 @@ namespace YOUR_PACKAGE_ID.Installer
         // Property values
         public const string RegistryName = "package.openupm.com";
         public const string RegistryUrl = "https://package.openupm.com";
+        // Scopes resolved from OpenUPM. Add the scope of every dependency that is hosted on OpenUPM too;
+        // dependencies from the Unity registry need no scope.
         public static readonly string[] PackageIds = new string[] {
-            "com.ivanmurzak",            // Ivan Murzak's OpenUPM packages
-            "extensions.unity",          // Ivan Murzak's OpenUPM packages (older)
-            "org.nuget.com.ivanmurzak",  // Ivan Murzak's NuGet packages
-            "org.nuget.microsoft",       // Microsoft NuGet packages
-            "org.nuget.system",          // Microsoft NuGet packages
-            "org.nuget.r3"               // R3 package NuGet package
+            PackageId
         };
 
         /// <summary>
@@ -46,7 +43,6 @@ namespace YOUR_PACKAGE_ID.Installer
         /// <param name="currentVersion">Current package version string</param>
         /// <param name="installerVersion">Installer version string</param>
         /// <returns>True if version should be updated (installer version is higher), false otherwise</returns>
-
         internal static bool ShouldUpdateVersion(string currentVersion, string installerVersion)
         {
             if (string.IsNullOrEmpty(currentVersion))
@@ -99,12 +95,12 @@ namespace YOUR_PACKAGE_ID.Installer
             var scopedRegistries = manifestJson[ScopedRegistries];
             if (scopedRegistries == null)
             {
-                manifestJson[ScopedRegistries] = new JSONArray();
+                manifestJson[ScopedRegistries] = scopedRegistries = new JSONArray();
                 modified = true;
             }
 
             // --- Add OpenUPM registry if needed
-            var openUpmRegistry = scopedRegistries!.Linq
+            var openUpmRegistry = scopedRegistries.Linq
                 .Select(kvp => kvp.Value)
                 .Where(r => r.Linq
                     .Any(p => p.Key == Name && p.Value == RegistryName))
@@ -153,7 +149,7 @@ namespace YOUR_PACKAGE_ID.Installer
 
             // Only update version if installer version is higher than current version
             var currentVersion = dependencies[PackageId];
-            if (currentVersion == null || ShouldUpdateVersion(currentVersion, Version))
+            if (currentVersion == null || ShouldUpdateVersion(currentVersion.Value, Version))
             {
                 dependencies[PackageId] = Version;
                 modified = true;

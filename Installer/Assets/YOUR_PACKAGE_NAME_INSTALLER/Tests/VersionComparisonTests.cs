@@ -9,9 +9,9 @@
 */
 using System.IO;
 using NUnit.Framework;
-using YOUR_PACKAGE_ID.Installer.SimpleJSON;
+using YOUR_ROOT_NAMESPACE.Installer.SimpleJSON;
 
-namespace YOUR_PACKAGE_ID.Installer.Tests
+namespace YOUR_ROOT_NAMESPACE.Installer.Tests
 {
     public class VersionComparisonTests
     {

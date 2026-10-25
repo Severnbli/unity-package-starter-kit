@@ -571,7 +571,7 @@ PlayerSettings:
   webGLMemoryGeometricGrowthCap: 96
   webGLPowerPreference: 2
   scriptingDefineSymbols:
-    Standalone: IVAN_MURZAK_INSTALLER_PROJECT
+    Standalone: PACKAGE_INSTALLER_PROJECT
   additionalCompilerArguments: {}
   platformArchitecture: {}
   scriptingBackend: {}

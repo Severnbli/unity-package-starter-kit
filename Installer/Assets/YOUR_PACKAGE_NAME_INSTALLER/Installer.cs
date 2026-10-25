@@ -10,7 +10,7 @@
 #nullable enable
 using UnityEditor;
 
-namespace YOUR_PACKAGE_ID.Installer
+namespace YOUR_ROOT_NAMESPACE.Installer
 {
     [InitializeOnLoad]
     public static partial class Installer
@@ -20,7 +20,7 @@ namespace YOUR_PACKAGE_ID.Installer
 
         static Installer()
         {
-#if !IVAN_MURZAK_INSTALLER_PROJECT
+#if !PACKAGE_INSTALLER_PROJECT
             AddScopedRegistryIfNeeded(ManifestPath);
 #endif
         }
