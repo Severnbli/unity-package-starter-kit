@@ -3,7 +3,7 @@
 Template for Unity Package Manager packages: a package project, an installer, test projects for several Unity versions, and CI that tests, signs and releases the package to OpenUPM.
 
 > [!NOTE]
-> This README describes the template. `commands/init.ps1` replaces it with the package README skeleton from `Unity-Package/Assets/root/README.md`.
+> This README describes the template. The init script replaces it with the package README skeleton from `Unity-Package/Assets/root/README.md`.
 
 ## Layout
 
@@ -12,7 +12,7 @@ Template for Unity Package Manager packages: a package project, an installer, te
 | `Unity-Package/Assets/root/` | The package itself. Everything outside this folder is not shipped. |
 | `Installer/` | Project that exports the installer `.unitypackage` (adds the OpenUPM registry and pins the version). |
 | `Unity-Tests/<version>/` | Empty projects that reference the package as a local, testable dependency, one per tested Unity version. |
-| `commands/` | Init, version bump, consistency check and "open all projects" scripts. |
+| `commands/` | Init, version bump, consistency check, test project and "open all projects" scripts. |
 | `.github/workflows/` | Test matrix and release pipeline (`*.yml-sample` until init). |
 | `docs/` | Release and signing guides. |
 
@@ -22,21 +22,36 @@ Template for Unity Package Manager packages: a package project, an installer, te
 
 Create a new repository from this template on GitHub and clone it.
 
+Every script in `commands/` comes twice, with the same options:
+
+| Platform | Scripts | Requirements |
+|---|---|---|
+| macOS, Linux | `*.sh` | bash (the macOS 3.2 one is enough), git, perl; `check-package.sh` also needs one of jq, python3 or node |
+| Windows | `*.cmd`, running `*.ps1` | git; nothing else: the built-in Windows PowerShell 5.1 is enough (PowerShell 7 works too) |
+
+On Windows run the `.cmd` launcher from cmd or PowerShell. It starts the `.ps1` script of the same name with `-ExecutionPolicy Bypass` for that one process, so Windows' default execution policy does not block it and no system setting changes. If your execution policy already allows scripts, you can also run the `.ps1` directly.
+
+The examples below show the macOS / Linux command first and the Windows one below it.
+
 ### 2. Initialize
 
-Requires [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) (`pwsh`).
-
-```powershell
-./commands/init.ps1 -PackageId "com.company.cool-package" -PackageName "Cool Package" -GitHubRepository "User/cool-package" -InstallerExtraPath "Editor"
+```bash
+./commands/init.sh --package-id com.company.cool-package --package-name "Cool Package" --github-repository User/cool-package --installer-extra-path Editor
 ```
 
-| Parameter | Description |
-|---|---|
-| `-PackageId` | Reverse-domain package name, e.g. `com.company.cool-package`. |
-| `-PackageName` | Display name, e.g. `Cool Package`. |
-| `-GitHubRepository` | `owner/repo` slug, used for links, badges and release URLs. |
-| `-RootNamespace` | Optional C# root namespace. Defaults to `Company.CoolPackage`, derived from the id and name, because package ids may contain `-`. |
-| `-InstallerExtraPath` | Optional folder between `Assets/` and the installer folder, e.g. `Editor`. Prompted when omitted. |
+```bat
+commands\init.cmd -PackageId "com.company.cool-package" -PackageName "Cool Package" -GitHubRepository "User/cool-package" -InstallerExtraPath "Editor"
+```
+
+| `.sh` option | `.ps1` parameter | Description |
+|---|---|---|
+| `--package-id` | `-PackageId` | Lowercase reverse-domain package name, e.g. `com.company.cool-package`. |
+| `--package-name` | `-PackageName` | Display name, e.g. `Cool Package`. |
+| `--github-repository` | `-GitHubRepository` | `owner/repo` slug, used for links, badges and release URLs. |
+| `--root-namespace` | `-RootNamespace` | Optional C# root namespace. Defaults to `Company.CoolPackage`, derived from the id and name, because package ids may contain `-`. |
+| `--installer-extra-path` | `-InstallerExtraPath` | Optional folder between `Assets/` and the installer folder, e.g. `Editor`. Prompted when omitted. |
+
+The script refuses to run on an already initialized copy and never touches Unity's generated folders (`Library/`, `Temp/`, ...).
 
 The script:
 
@@ -65,10 +80,23 @@ If a dependency is hosted on OpenUPM, add its scope to `PackageIds` in `Installe
 Unity needs committed `.meta` files: a missing one drops the file from the `.unitypackage` and gives it a new GUID on every import. Open the projects once:
 
 ```bash
-./commands/open-all-projects-unix.sh
+./commands/open-all-projects.sh
 ```
 
-On Windows run `./commands/open-all-projects-windows.ps1`. You can also add `Installer` and `Unity-Package` to Unity Hub and open them by hand.
+```bat
+commands\open-all-projects.cmd
+```
+
+This opens `Installer` and `Unity-Package`, each with the editor version in its `ProjectSettings/ProjectVersion.txt`, from the Unity Hub install folders (including a custom location set in Unity Hub). Options:
+
+| `.sh` option | `.ps1` parameter | Description |
+|---|---|---|
+| `--with-tests` | `-WithTests` | Also open every test project in `Unity-Tests/`. |
+| `--editors-path <dir>` | `-EditorsPath <dir>` | Look for editors in another folder first. |
+| `--what-if` | `-WhatIf` | Print what would be opened. |
+| `<project> ...` | `-Projects <project>,...` | Open only these projects, e.g. `Unity-Package`. |
+
+You can also add the projects to Unity Hub and open them by hand.
 
 ### 5. Write the package
 
@@ -98,15 +126,42 @@ The test projects list the package under `testables`, so its tests run there wit
 ### 6. Check before committing
 
 ```bash
-bash commands/check-package.sh
+./commands/check-package.sh
 ```
 
-The script needs no Unity license (only `git` and `jq`) and runs first in CI. It checks that:
+```bat
+commands\check-package.cmd
+```
+
+The script needs no Unity license and runs first in CI. It looks at tracked files and at new files git does not ignore, and checks that:
 
 - every JSON, manifest and `.asmdef` file parses,
 - `package.json`, `Installer.cs` and both changelogs agree on the version,
 - the package copies of `README.md` and `CHANGELOG.md` match the root files,
-- every package asset has a `.meta` file, no `.meta` file is orphaned, and GUIDs are unique.
+- every package asset has a `.meta` file, no `.meta` file is orphaned, and GUIDs are unique,
+- the test workflow matrix lists exactly the projects in `Unity-Tests/`.
+
+## Test projects
+
+Each folder in `Unity-Tests/` is named after the Unity version it is tested with. Add or remove one with the test project script; it also rewrites the `unityVersion` matrix in `test.yml` (or `test.yml-sample` before init):
+
+```bash
+./commands/test-project.sh --list
+./commands/test-project.sh --add 2023.2.22f1
+./commands/test-project.sh --add 6000.0.58f2 --from 6000.3.1f1
+./commands/test-project.sh --remove 2022.3.62f3
+./commands/test-project.sh --sync
+```
+
+```bat
+commands\test-project.cmd -List
+commands\test-project.cmd -Add 2023.2.22f1
+commands\test-project.cmd -Add 6000.0.58f2 -From 6000.3.1f1
+commands\test-project.cmd -Remove 2022.3.62f3
+commands\test-project.cmd -Sync
+```
+
+`--add` copies the closest existing project (same major version first, without `Library/` and the lock file) and sets the new editor version. Open the new project once in that editor, let Unity upgrade it, and commit the result. Copying across major versions prints a warning: check `Packages/manifest.json` for packages that do not exist in the new version. `--sync` only rewrites the matrix, e.g. after renaming a folder by hand. The last test project cannot be removed, because the matrix cannot be empty.
 
 ## CI
 
@@ -134,12 +189,18 @@ Signing is a hard gate: without the `UPM_*` values no release is created. [`docs
 
 Dependabot keeps the pinned action versions up to date.
 
-To test another Unity version, add a project to `Unity-Tests/`, then update the matrix in `test.yml` and the lists in the `open-all-projects` scripts.
+To test another Unity version, use the [test project script](#test-projects).
 
 ## Release
 
-```powershell
-./commands/bump-version.ps1 -NewVersion "1.0.1"
+```bash
+./commands/bump-version.sh 1.0.1
 ```
+
+```bat
+commands\bump-version.cmd -NewVersion "1.0.1"
+```
+
+Both accept prerelease versions (`1.1.0-preview.1`) and a preview mode (`--what-if` / `-WhatIf`). Add `--sync-docs to-package` / `-SyncDocs ToPackage` to copy the root `README.md` and `CHANGELOG.md` into the package first, or `to-root` / `ToRoot` for the other direction.
 
 Then add the changelog entry, merge and run the release workflow. See [`docs/Deploy-OpenUPM.md`](docs/Deploy-OpenUPM.md) for the full checklist and the one-time OpenUPM setup.

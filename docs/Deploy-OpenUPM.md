@@ -13,16 +13,22 @@
 
 1. Bump the version everywhere it appears:
 
-   ```powershell
-   ./commands/bump-version.ps1 -NewVersion "1.0.1"
+   ```bash
+   ./commands/bump-version.sh 1.0.1
    ```
 
-2. Add a `## [1.0.1] - YYYY-MM-DD` entry to `CHANGELOG.md` and copy the file to `Unity-Package/Assets/root/CHANGELOG.md`.
+   On Windows: `commands\bump-version.cmd -NewVersion "1.0.1"`.
+
+   Add `--sync-docs to-package` (`-SyncDocs ToPackage`) to copy the root `README.md` and `CHANGELOG.md` into the package in the same step.
+
+2. Add a `## [1.0.1] - YYYY-MM-DD` entry to `CHANGELOG.md` and copy the file to `Unity-Package/Assets/root/CHANGELOG.md` (or bump with `--sync-docs to-package` after writing it).
 3. Run the license-free checks and fix anything they report:
 
    ```bash
-   bash commands/check-package.sh
+   ./commands/check-package.sh
    ```
+
+   On Windows: `commands\check-package.cmd`.
 
 4. Merge to `main`, then run the **release** workflow from the **Actions** tab.
 
