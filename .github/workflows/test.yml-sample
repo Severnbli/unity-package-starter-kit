@@ -43,7 +43,7 @@ jobs:
       plugin: ${{ steps.changes.outputs.plugin }}
       installer: ${{ steps.changes.outputs.installer }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
 
       - name: Check package consistency
         run: bash commands/check-package.sh

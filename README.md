@@ -177,7 +177,6 @@ Add them under **Settings > Secrets and variables > Actions**.
 | `UPM_ORG_ID` | secret | Package signing |
 | `UPM_SERVICE_ACCOUNT_KEY_ID` | secret | Package signing |
 | `UPM_SERVICE_ACCOUNT_KEY_SECRET` | secret | Package signing |
-| `UPM_INSTALL_SHA256` | variable | SHA-256 of the pinned UPM CLI install script |
 
 Signing is a hard gate: without the `UPM_*` values no release is created. [`docs/openupm-signing.md`](docs/openupm-signing.md) explains how to get them.
 
@@ -186,8 +185,6 @@ Signing is a hard gate: without the `UPM_*` values no release is created. [`docs
 - **test** runs on pull requests to `main` and `dev` that touch the package, the test projects or the installer. The license-free checks run first; then the package tests run on every Unity version in `Unity-Tests/` in EditMode, PlayMode and Standalone, and the installer tests run in EditMode. Only the projects a PR touches are tested, and a new push cancels the previous run.
 - **release** runs only on demand (**Actions > release > Run workflow**). It fails if the version tag already exists, runs the full test matrix, builds the signed tarball and both `.unitypackage` files, attests them and publishes the tag and GitHub Release in one step.
 - **test-unity-plugin** is the reusable job that runs one Unity test mode for one project.
-
-Dependabot keeps the pinned action versions up to date.
 
 To test another Unity version, use the [test project script](#test-projects).
 
@@ -204,3 +201,37 @@ commands\bump-version.cmd -NewVersion "1.0.1"
 Both accept prerelease versions (`1.1.0-preview.1`) and a preview mode (`--what-if` / `-WhatIf`). Add `--sync-docs to-package` / `-SyncDocs ToPackage` to copy the root `README.md` and `CHANGELOG.md` into the package first, or `to-root` / `ToRoot` for the other direction.
 
 Then add the changelog entry, merge and run the release workflow. See [`docs/Deploy-OpenUPM.md`](docs/Deploy-OpenUPM.md) for the full checklist and the one-time OpenUPM setup.
+
+## Differences from the upstream template
+
+This repository is a fork of Ivan Murzak's [Unity-Package-Template](https://github.com/IvanMurzak/Unity-Package-Template). Compared with it:
+
+**Scripts**
+
+- Every script exists for macOS / Linux (`.sh`) and Windows (`.ps1` with a `.cmd` launcher); upstream ships PowerShell scripts plus separate `open-all-projects-unix.sh` / `open-all-projects-windows.ps1`. The PowerShell scripts run on the built-in Windows PowerShell 5.1.
+- `init` also takes `--root-namespace`, adds the `YOUR_ROOT_NAMESPACE` and `YOUR_PACKAGE_NAME_PASCAL` placeholders, enables the workflows, swaps in the package README and refuses to run twice.
+- New `check-package` (license-free consistency checks) and `test-project` (add, remove and sync test projects) scripts.
+- `bump-version` also accepts prerelease versions, `--what-if` and `--sync-docs`; `open-all-projects` picks each project's editor version and reads Unity Hub's custom install folder.
+
+**CI**
+
+- `test_pull_request.yml-sample` is replaced by `test.yml-sample`: a matrix built from the folders in `Unity-Tests/`, license-free checks first, only the touched projects tested, and older runs cancelled.
+- `release.yml-sample` runs only on demand instead of on every push to `main`, and it adds build provenance attestations to the release files.
+- Actions are referenced by version tag, and the UPM CLI install script is not checked against a SHA-256.
+
+**Package and installer**
+
+- C# namespaces use `YOUR_ROOT_NAMESPACE` instead of the package id, because ids may contain `-`.
+- The installer adds only the package's own scope to the OpenUPM registry instead of Ivan Murzak's and NuGet scopes; its define is `PACKAGE_INSTALLER_PROJECT` instead of `IVAN_MURZAK_INSTALLER_PROJECT`, and its test fixtures were reworked.
+- `package.json` targets Unity `2021.3` instead of `2019.4` and links the documentation, changelog and license; the package skeleton drops `Editor/Gizmos` and `Editor/Scripts`, and gains a README template.
+
+**Test projects**
+
+- `Unity-Tests/2023.2.22f1` is removed; `2022.3.62f3` and `6000.3.1f1` remain.
+- The test projects list the package under `testables` instead of carrying their own sample test assemblies, and no longer commit `packages-lock.json` or the OpenUPM registry.
+
+**Repository**
+
+- The README and docs are rewritten; `Deploy-GitHub.md`, `Deploy-npmjs.md` and `Manual-Package-Rename.md` are removed.
+- `FUNDING.yml` and the committed `.vscode/` folders are removed; IDE folders are ignored repository-wide, and `.gitattributes` keeps `.sh` on LF and `.cmd` on CRLF.
+- The license holder changed.
